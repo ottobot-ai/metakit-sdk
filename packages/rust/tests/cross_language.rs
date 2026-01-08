@@ -102,15 +102,22 @@ fn verifies_signatures_from_all_vectors() {
                 assert!(
                     is_valid,
                     "Failed to verify {} {} signature (valid=false)\nHash: {}\nSig: {}\nPubKey: {}",
-                    vector.source, vector.test_type,
-                    vector.sha256_hash_hex, vector.signature_hex, vector.public_key_hex
+                    vector.source,
+                    vector.test_type,
+                    vector.sha256_hash_hex,
+                    vector.signature_hex,
+                    vector.public_key_hex
                 );
             }
             Err(e) => {
                 panic!(
                     "Error verifying {} {} signature: {:?}\nHash: {}\nSig: {}\nPubKey: {}",
-                    vector.source, vector.test_type, e,
-                    vector.sha256_hash_hex, vector.signature_hex, vector.public_key_hex
+                    vector.source,
+                    vector.test_type,
+                    e,
+                    vector.sha256_hash_hex,
+                    vector.signature_hex,
+                    vector.public_key_hex
                 );
             }
         }
@@ -124,13 +131,14 @@ fn rejects_tampered_signatures() {
 
     // Tamper with the hash
     let tampered_hash = vector.sha256_hash_hex.replace("0", "1");
-    let is_valid =
-        verify_hash(&tampered_hash, &vector.signature_hex, &vector.public_key_hex).unwrap();
+    let is_valid = verify_hash(
+        &tampered_hash,
+        &vector.signature_hex,
+        &vector.public_key_hex,
+    )
+    .unwrap();
 
-    assert!(
-        !is_valid,
-        "Should reject signature with tampered hash"
-    );
+    assert!(!is_valid, "Should reject signature with tampered hash");
 }
 
 mod by_source_language {

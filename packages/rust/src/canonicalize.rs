@@ -25,7 +25,8 @@ use crate::types::{Result, SdkError};
 /// assert_eq!(canonical, r#"{"a":1,"b":2}"#);
 /// ```
 pub fn canonicalize<T: Serialize>(data: &T) -> Result<String> {
-    let bytes = canonicalize_to_vec(data).map_err(|e| SdkError::SerializationError(e.to_string()))?;
+    let bytes =
+        canonicalize_to_vec(data).map_err(|e| SdkError::SerializationError(e.to_string()))?;
     String::from_utf8(bytes).map_err(|e| SdkError::SerializationError(e.to_string()))
 }
 

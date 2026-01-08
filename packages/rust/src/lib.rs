@@ -76,8 +76,8 @@ pub use types::{
 };
 
 // Re-export main functions
-pub use canonicalize::{canonicalize, canonicalize_bytes};
 pub use binary::{encode_data_update, to_bytes};
+pub use canonicalize::{canonicalize, canonicalize_bytes};
 pub use codec::decode_data_update;
 pub use hash::{compute_digest, hash_bytes, hash_data};
 pub use sign::{sign, sign_data_update, sign_hash};

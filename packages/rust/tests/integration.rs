@@ -14,8 +14,16 @@ mod key_generation {
     fn generates_valid_key_pair() {
         let key_pair = generate_key_pair();
 
-        assert_eq!(key_pair.private_key.len(), 64, "Private key should be 64 hex chars");
-        assert_eq!(key_pair.public_key.len(), 130, "Public key should be 130 hex chars");
+        assert_eq!(
+            key_pair.private_key.len(),
+            64,
+            "Private key should be 64 hex chars"
+        );
+        assert_eq!(
+            key_pair.public_key.len(),
+            130,
+            "Public key should be 130 hex chars"
+        );
         assert!(
             key_pair.address.starts_with("DAG"),
             "Address should start with DAG"

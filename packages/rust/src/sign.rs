@@ -95,8 +95,8 @@ pub fn sign_hash(hash_hex: &str, private_key: &str) -> Result<String> {
     let digest = compute_digest_from_hash(hash_hex);
 
     // Create message from digest
-    let message = Message::from_digest_slice(&digest)
-        .map_err(|e| SdkError::CryptoError(e.to_string()))?;
+    let message =
+        Message::from_digest_slice(&digest).map_err(|e| SdkError::CryptoError(e.to_string()))?;
 
     // Sign with ECDSA
     let signature = secp.sign_ecdsa(&message, &secret_key);
