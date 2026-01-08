@@ -1,0 +1,14 @@
+# Default owners for everything
+* @Constellation-Labs/sdk-maintainers
+
+# TypeScript SDK
+/packages/typescript/ @Constellation-Labs/sdk-maintainers
+
+# Python SDK
+/packages/python/ @Constellation-Labs/sdk-maintainers
+
+# Shared test vectors (require review from maintainers)
+/shared/ @Constellation-Labs/sdk-maintainers
+
+# CI/CD configurations
+/.github/ @Constellation-Labs/sdk-maintainers

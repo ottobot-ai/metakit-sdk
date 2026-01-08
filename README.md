@@ -73,6 +73,7 @@ print(f'Valid: {result.is_valid}')
 
 - Node.js 18+
 - Python 3.10+
+- Make (standard on Linux/macOS)
 
 ### Setup
 
@@ -81,40 +82,27 @@ print(f'Valid: {result.is_valid}')
 git clone https://github.com/Constellation-Labs/metakit-sdk.git
 cd metakit-sdk
 
-# Install Node.js dependencies
-npm install
+# Install all dependencies
+make install
 
-# Install Python dependencies
-cd packages/python
-python3 -m venv venv
-source venv/bin/activate
-pip install -e ".[dev]"
-cd ../..
+# Or install individually
+make install-ts
+make install-py
 ```
 
 ### Common Commands
 
 ```bash
-# Run all tests
-npm run test:all
+make help        # Show all available commands
 
-# Run TypeScript tests only
-npm run test:ts
+make test        # Run all tests
+make test-ts     # Run TypeScript tests only
+make test-py     # Run Python tests only
 
-# Run Python tests only
-npm run test:py
-
-# Lint all packages
-npm run lint:all
-
-# Build TypeScript
-npm run build:ts
-
-# Format all code
-npm run format:all
-
-# Validate versions
-npm run validate:versions
+make lint        # Lint all packages
+make format      # Format all code
+make build       # Build all packages
+make clean       # Clean build artifacts
 ```
 
 ## Cross-Language Compatibility
@@ -127,15 +115,19 @@ All SDKs are validated against shared test vectors in `/shared/test_vectors.json
 
 ## Releasing
 
-This repository uses independent versioning for each package. To release:
+Releases are triggered by pushing tags:
 
-1. Update version in the package config (`package.json` or `pyproject.toml`)
-2. Update CHANGELOG.md in the package
-3. Create a PR and merge to main
-4. Create a GitHub Release with the appropriate tag:
-   - TypeScript: `typescript-v1.2.3`
-   - Python: `python-v1.2.3`
-5. GitHub Actions will automatically publish to npm/PyPI
+```bash
+# TypeScript release
+git tag -a typescript-v1.0.0 -m "TypeScript SDK v1.0.0"
+git push origin typescript-v1.0.0
+
+# Python release
+git tag -a python-v1.0.0 -m "Python SDK v1.0.0"
+git push origin python-v1.0.0
+```
+
+See [docs/PUBLISHING.md](./docs/PUBLISHING.md) for complete setup instructions.
 
 ## Contributing
 
