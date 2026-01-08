@@ -12,7 +12,6 @@ from ecdsa import SECP256k1, SigningKey
 from ecdsa.util import sigencode_der
 
 from .binary import to_bytes
-from .canonicalize import canonicalize
 from .hash import hash_bytes
 from .types import SignatureProof
 
@@ -104,7 +103,7 @@ def sign_hash(hash_hex: str, private_key: str) -> str:
 
     # Step 4: Sign with ECDSA
     sk = SigningKey.from_string(bytes.fromhex(private_key), curve=SECP256k1)
-    signature = sk.sign_digest(truncated_hash, sigencode=sigencode_der)
+    signature: bytes = sk.sign_digest(truncated_hash, sigencode=sigencode_der)
 
     return signature.hex()
 

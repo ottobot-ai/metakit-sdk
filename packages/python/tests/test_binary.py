@@ -1,8 +1,6 @@
 """Tests for binary encoding."""
 
-import pytest
-
-from constellation_sdk import to_bytes, encode_data_update
+from constellation_sdk import encode_data_update, to_bytes
 from constellation_sdk.types import CONSTELLATION_PREFIX
 
 

@@ -3,7 +3,7 @@ Core type definitions for the Constellation Metagraph SDK.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Generic, List, TypeVar
+from typing import Generic, List, TypeVar
 
 T = TypeVar("T")
 

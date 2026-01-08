@@ -4,17 +4,15 @@ High-Level Signed Object API.
 Convenience functions for creating and managing signed objects.
 """
 
-from typing import Any, List, TypeVar
+from typing import List, TypeVar
 
 from .sign import sign, sign_data_update
-from .types import Signed, SignatureProof
+from .types import SignatureProof, Signed
 
 T = TypeVar("T")
 
 
-def create_signed_object(
-    value: T, private_key: str, is_data_update: bool = False
-) -> Signed[T]:
+def create_signed_object(value: T, private_key: str, is_data_update: bool = False) -> Signed[T]:
     """
     Create a signed object with a single signature.
 
@@ -37,9 +35,7 @@ def create_signed_object(
     return Signed(value=value, proofs=[proof])
 
 
-def add_signature(
-    signed: Signed[T], private_key: str, is_data_update: bool = False
-) -> Signed[T]:
+def add_signature(signed: Signed[T], private_key: str, is_data_update: bool = False) -> Signed[T]:
     """
     Add an additional signature to an existing signed object.
 
@@ -72,9 +68,7 @@ def add_signature(
     return Signed(value=signed.value, proofs=[*signed.proofs, proof])
 
 
-def batch_sign(
-    value: T, private_keys: List[str], is_data_update: bool = False
-) -> Signed[T]:
+def batch_sign(value: T, private_keys: List[str], is_data_update: bool = False) -> Signed[T]:
     """
     Create a signed object with multiple signatures at once.
 

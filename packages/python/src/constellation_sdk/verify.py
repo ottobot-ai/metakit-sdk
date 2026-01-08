@@ -12,7 +12,7 @@ from ecdsa.util import sigdecode_der
 
 from .binary import to_bytes
 from .hash import hash_bytes
-from .types import Signed, SignatureProof, VerificationResult
+from .types import SignatureProof, Signed, VerificationResult
 
 T = TypeVar("T")
 
@@ -89,9 +89,10 @@ def verify_hash(hash_hex: str, signature: str, public_key_id: str) -> bool:
 
         # Step 4: Verify with ecdsa
         vk = VerifyingKey.from_string(bytes.fromhex(full_public_key), curve=SECP256k1)
-        return vk.verify_digest(
+        result: bool = vk.verify_digest(
             bytes.fromhex(signature), truncated_hash, sigdecode=sigdecode_der
         )
+        return result
     except Exception:
         return False
 

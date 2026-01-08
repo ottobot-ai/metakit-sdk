@@ -76,6 +76,10 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+[[tool.mypy.overrides]]
+module = ["ecdsa", "ecdsa.*"]
+ignore_missing_imports = true
+
 [tool.black]
 line-length = 100
 target-version = ["py310", "py311", "py312"]

@@ -3,17 +3,17 @@
 import pytest
 
 from constellation_sdk import (
-    generate_key_pair,
-    key_pair_from_private_key,
-    create_signed_object,
     add_signature,
     batch_sign,
-    verify,
-    sign,
-    sign_data_update,
-    verify_signature,
+    create_signed_object,
+    generate_key_pair,
     is_valid_private_key,
     is_valid_public_key,
+    key_pair_from_private_key,
+    sign,
+    sign_data_update,
+    verify,
+    verify_signature,
 )
 
 

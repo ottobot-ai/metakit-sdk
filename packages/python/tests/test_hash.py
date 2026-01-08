@@ -1,9 +1,6 @@
 """Tests for hashing utilities."""
 
-import pytest
-
-from constellation_sdk import hash_data, hash_bytes, compute_digest
-from constellation_sdk.binary import to_bytes
+from constellation_sdk import compute_digest, hash_bytes, hash_data
 
 
 class TestHashData:

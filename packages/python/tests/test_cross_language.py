@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from constellation_sdk import canonicalize, to_bytes, hash_bytes, verify_hash
+from constellation_sdk import canonicalize, hash_bytes, to_bytes, verify_hash
 
 
 @pytest.fixture
@@ -23,9 +23,9 @@ class TestCanonicalJson:
         """Canonical JSON should match all test vectors."""
         for vector in test_vectors:
             canonical = canonicalize(vector["data"])
-            assert canonical == vector["canonical_json"], (
-                f"Mismatch for {vector['source']} {vector['type']}"
-            )
+            assert (
+                canonical == vector["canonical_json"]
+            ), f"Mismatch for {vector['source']} {vector['type']}"
 
 
 class TestBinaryEncoding:
@@ -37,9 +37,9 @@ class TestBinaryEncoding:
             is_data_update = vector["type"] == "TestDataUpdate"
             result = to_bytes(vector["data"], is_data_update)
             result_hex = result.hex()
-            assert result_hex == vector["utf8_bytes_hex"], (
-                f"Mismatch for {vector['source']} {vector['type']}"
-            )
+            assert (
+                result_hex == vector["utf8_bytes_hex"]
+            ), f"Mismatch for {vector['source']} {vector['type']}"
 
 
 class TestHashing:
@@ -51,9 +51,9 @@ class TestHashing:
             is_data_update = vector["type"] == "TestDataUpdate"
             data_bytes = to_bytes(vector["data"], is_data_update)
             hash_result = hash_bytes(data_bytes)
-            assert hash_result.value == vector["sha256_hash_hex"], (
-                f"Mismatch for {vector['source']} {vector['type']}"
-            )
+            assert (
+                hash_result.value == vector["sha256_hash_hex"]
+            ), f"Mismatch for {vector['source']} {vector['type']}"
 
 
 class TestSignatureVerification:
@@ -74,9 +74,7 @@ class TestSignatureVerification:
         vector = test_vectors[0]
         # Modify the hash slightly
         tampered_hash = vector["sha256_hash_hex"].replace("0", "1")
-        is_valid = verify_hash(
-            tampered_hash, vector["signature_hex"], vector["public_key_hex"]
-        )
+        is_valid = verify_hash(tampered_hash, vector["signature_hex"], vector["public_key_hex"])
         assert not is_valid
 
 
@@ -86,9 +84,7 @@ class TestBySourceLanguage:
     @pytest.mark.parametrize("language", ["python", "javascript", "rust", "go"])
     def test_regular_data_signatures(self, test_vectors, language):
         """Verify regular data signatures from each language."""
-        vectors = [
-            v for v in test_vectors if v["source"] == language and v["type"] == "TestData"
-        ]
+        vectors = [v for v in test_vectors if v["source"] == language and v["type"] == "TestData"]
         assert len(vectors) > 0, f"No TestData vectors for {language}"
 
         for vector in vectors:
@@ -107,9 +103,7 @@ class TestBySourceLanguage:
     def test_data_update_signatures(self, test_vectors, language):
         """Verify DataUpdate signatures from each language."""
         vectors = [
-            v
-            for v in test_vectors
-            if v["source"] == language and v["type"] == "TestDataUpdate"
+            v for v in test_vectors if v["source"] == language and v["type"] == "TestDataUpdate"
         ]
         assert len(vectors) > 0, f"No TestDataUpdate vectors for {language}"
 

@@ -1,7 +1,5 @@
 """Tests for JSON canonicalization."""
 
-import pytest
-
 from constellation_sdk import canonicalize
 
 
