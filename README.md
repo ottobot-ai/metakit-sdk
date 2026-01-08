@@ -5,6 +5,7 @@ Official multi-language SDK for Constellation Metagraph signing operations.
 [![CI](https://github.com/Constellation-Labs/metakit-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/Constellation-Labs/metakit-sdk/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@constellation-network/metagraph-sdk.svg)](https://www.npmjs.com/package/@constellation-network/metagraph-sdk)
 [![PyPI version](https://img.shields.io/pypi/v/constellation-metagraph-sdk.svg)](https://pypi.org/project/constellation-metagraph-sdk/)
+[![Crates.io](https://img.shields.io/crates/v/constellation-metagraph-sdk.svg)](https://crates.io/crates/constellation-metagraph-sdk)
 
 ## Packages
 
@@ -12,6 +13,9 @@ Official multi-language SDK for Constellation Metagraph signing operations.
 |----------|---------|---------------|
 | TypeScript | [@constellation-network/metagraph-sdk](https://www.npmjs.com/package/@constellation-network/metagraph-sdk) | [README](./packages/typescript/README.md) |
 | Python | [constellation-metagraph-sdk](https://pypi.org/project/constellation-metagraph-sdk/) | [README](./packages/python/README.md) |
+| Rust | [constellation-metagraph-sdk](https://crates.io/crates/constellation-metagraph-sdk) | [README](./packages/rust/README.md) |
+| Go | [github.com/Constellation-Labs/metakit-sdk/packages/go](https://pkg.go.dev/github.com/Constellation-Labs/metakit-sdk/packages/go) | [README](./packages/go/README.md) |
+| Java | [io.constellationnetwork:metagraph-sdk](https://central.sonatype.com/artifact/io.constellationnetwork/metagraph-sdk) | [README](./packages/java/README.md) |
 
 ## Features
 
@@ -67,12 +71,112 @@ result = verify(signed)
 print(f'Valid: {result.is_valid}')
 ```
 
+### Rust
+
+```bash
+cargo add constellation-metagraph-sdk
+```
+
+```rust
+use constellation_sdk::{
+    wallet::generate_key_pair,
+    signed_object::create_signed_object,
+    verify::verify,
+};
+use serde_json::json;
+
+fn main() {
+    // Generate a key pair
+    let key_pair = generate_key_pair();
+    println!("Address: {}", key_pair.address);
+
+    // Sign data
+    let data = json!({ "action": "UPDATE", "payload": { "key": "value" } });
+    let signed = create_signed_object(&data, &key_pair.private_key, false).unwrap();
+
+    // Verify
+    let result = verify(&signed, false);
+    println!("Valid: {}", result.is_valid);
+}
+```
+
+### Go
+
+```bash
+go get github.com/Constellation-Labs/metakit-sdk/packages/go
+```
+
+```go
+package main
+
+import (
+    "fmt"
+    constellation "github.com/Constellation-Labs/metakit-sdk/packages/go"
+)
+
+func main() {
+    // Generate a key pair
+    keyPair, _ := constellation.GenerateKeyPair()
+    fmt.Println("Address:", keyPair.Address)
+
+    // Sign data
+    data := map[string]interface{}{
+        "action": "UPDATE",
+        "payload": map[string]interface{}{"key": "value"},
+    }
+    signed, _ := constellation.CreateSignedObject(data, keyPair.PrivateKey, false)
+
+    // Verify
+    result := constellation.Verify(signed, false)
+    fmt.Println("Valid:", result.IsValid)
+}
+```
+
+### Java
+
+```xml
+<dependency>
+    <groupId>io.constellationnetwork</groupId>
+    <artifactId>metagraph-sdk</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+```java
+import io.constellationnetwork.metagraph.sdk.*;
+import java.util.Map;
+
+public class Example {
+    public static void main(String[] args) {
+        // Generate a key pair
+        Types.KeyPair keyPair = Wallet.generateKeyPair();
+        System.out.println("Address: " + keyPair.getAddress());
+
+        // Sign data
+        Map<String, Object> data = Map.of(
+            "action", "UPDATE",
+            "payload", Map.of("key", "value")
+        );
+        Types.Signed<Map<String, Object>> signed = SignedObject.createSignedObject(
+            data, keyPair.getPrivateKey(), false
+        );
+
+        // Verify
+        Types.VerificationResult result = SignedObject.verify(signed, false);
+        System.out.println("Valid: " + result.isValid());
+    }
+}
+```
+
 ## Development
 
 ### Prerequisites
 
-- Node.js 18+
-- Python 3.10+
+- Node.js 18+ (TypeScript)
+- Python 3.10+ (Python)
+- Rust 1.70+ (Rust)
+- Go 1.18+ (Go)
+- Java 11+ and Maven 3.8+ (Java)
 - Make (standard on Linux/macOS)
 
 ### Setup
@@ -86,23 +190,28 @@ cd metakit-sdk
 make install
 
 # Or install individually
-make install-ts
-make install-py
+make install-ts      # TypeScript
+make install-py      # Python (creates venv)
+make install-go      # Go
+make install-java    # Java (managed by Maven)
 ```
 
 ### Common Commands
 
 ```bash
-make help        # Show all available commands
+make help            # Show all available commands
 
-make test        # Run all tests
-make test-ts     # Run TypeScript tests only
-make test-py     # Run Python tests only
+make test            # Run all tests
+make test-ts         # TypeScript tests
+make test-py         # Python tests
+make test-rs         # Rust tests
+make test-go         # Go tests
+make test-java       # Java tests
 
-make lint        # Lint all packages
-make format      # Format all code
-make build       # Build all packages
-make clean       # Clean build artifacts
+make lint            # Lint all packages
+make format          # Format all code
+make build           # Build all packages
+make clean           # Clean build artifacts
 ```
 
 ## Cross-Language Compatibility

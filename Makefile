@@ -18,6 +18,7 @@ help:
 	@echo "  install-py, test-py, lint-py, format-py"
 	@echo "  install-rs, test-rs, lint-rs, format-rs, build-rs"
 	@echo "  install-go, test-go, lint-go, format-go, build-go"
+	@echo "  install-java, test-java, lint-java, format-java, build-java"
 
 # TypeScript targets
 install-ts:
@@ -100,16 +101,35 @@ build-go:
 clean-go:
 	cd packages/go && go clean
 
+# Java targets
+install-java:
+	@echo "Java dependencies managed by Maven"
+
+test-java:
+	cd packages/java && mvn test
+
+lint-java:
+	@echo "Java linting not configured (consider using checkstyle)"
+
+format-java:
+	@echo "Java formatting not configured (consider using google-java-format)"
+
+build-java:
+	cd packages/java && mvn package -DskipTests
+
+clean-java:
+	cd packages/java && mvn clean
+
 # Combined targets
-install: install-ts install-py install-go
-	@echo "Note: Rust uses Cargo for dependencies"
+install: install-ts install-py install-go install-java
+	@echo "Note: Rust uses Cargo for dependencies, Java uses Maven"
 
-test: test-ts test-py test-rs test-go
+test: test-ts test-py test-rs test-go test-java
 
-lint: lint-ts lint-py lint-rs lint-go
+lint: lint-ts lint-py lint-rs lint-go lint-java
 
-format: format-ts format-py format-rs format-go
+format: format-ts format-py format-rs format-go format-java
 
-build: build-ts build-rs build-go
+build: build-ts build-rs build-go build-java
 
-clean: clean-ts clean-py clean-rs clean-go
+clean: clean-ts clean-py clean-rs clean-go clean-java

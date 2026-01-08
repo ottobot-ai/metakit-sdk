@@ -6,8 +6,11 @@ Thank you for your interest in contributing to the Constellation Metagraph SDK!
 
 ### Prerequisites
 
-- Node.js 18+
-- Python 3.10+
+- Node.js 18+ (TypeScript)
+- Python 3.10+ (Python)
+- Rust 1.70+ (Rust)
+- Go 1.18+ (Go)
+- Java 11+ and Maven 3.8+ (Java)
 - Git
 
 ### Getting Started
@@ -20,20 +23,20 @@ Thank you for your interest in contributing to the Constellation Metagraph SDK!
 
 2. Install dependencies:
    ```bash
-   # TypeScript
-   npm install
+   # All languages
+   make install
 
-   # Python
-   cd packages/python
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -e ".[dev]"
-   cd ../..
+   # Or individually:
+   make install-ts      # TypeScript
+   make install-py      # Python (creates venv)
+   make install-go      # Go
+   make install-java    # Java (managed by Maven)
+   # Rust uses Cargo, no install needed
    ```
 
 3. Run tests to verify setup:
    ```bash
-   npm run test:all
+   make test
    ```
 
 ## Development Workflow
@@ -49,8 +52,8 @@ Thank you for your interest in contributing to the Constellation Metagraph SDK!
 
 3. Run tests and linting:
    ```bash
-   npm run test:all
-   npm run lint:all
+   make test
+   make lint
    ```
 
 4. Commit your changes with a descriptive message
@@ -60,15 +63,29 @@ Thank you for your interest in contributing to the Constellation Metagraph SDK!
 ### Code Style
 
 #### TypeScript
-- Use Prettier for formatting (`npm run format:ts`)
-- Use ESLint for linting (`npm run lint:ts`)
+- Use Prettier for formatting (`make format-ts`)
+- Use ESLint for linting (`make lint-ts`)
 - Write tests for new functionality
 
 #### Python
-- Use Black for formatting (`npm run format:py`)
+- Use Black for formatting
 - Use isort for import sorting
-- Use Ruff for linting (`npm run lint:py`)
+- Use Ruff for linting (`make lint-py`)
 - Use mypy for type checking
+- Write tests for new functionality
+
+#### Rust
+- Use rustfmt for formatting (`make format-rs`)
+- Use clippy for linting (`make lint-rs`)
+- Write tests for new functionality
+
+#### Go
+- Use gofmt for formatting (`make format-go`)
+- Use go vet for linting (`make lint-go`)
+- Write tests for new functionality
+
+#### Java
+- Follow standard Java conventions
 - Write tests for new functionality
 
 ## Testing
@@ -77,17 +94,21 @@ Thank you for your interest in contributing to the Constellation Metagraph SDK!
 
 ```bash
 # All tests
-npm run test:all
+make test
 
-# TypeScript only
-npm run test:ts
+# Individual languages
+make test-ts         # TypeScript
+make test-py         # Python
+make test-rs         # Rust
+make test-go         # Go
+make test-java       # Java
 
-# Python only
-npm run test:py
-
-# Cross-language compatibility
-npm test -w packages/typescript -- --testPathPattern=cross-language
+# Cross-language compatibility tests
+cd packages/typescript && npm test -- --testPathPattern=cross-language
 cd packages/python && pytest tests/test_cross_language.py
+cd packages/rust && cargo test --test cross_language
+cd packages/go && go test -v -run CrossLanguage
+cd packages/java && mvn test -Dtest=CrossLanguageTest
 ```
 
 ### Cross-Language Compatibility
@@ -95,8 +116,8 @@ cd packages/python && pytest tests/test_cross_language.py
 When modifying signing or hashing logic, ensure that:
 
 1. All test vectors in `/shared/test_vectors.json` still pass
-2. Both TypeScript and Python implementations produce identical results
-3. Signatures are interoperable between languages
+2. All language implementations produce identical results
+3. Signatures are interoperable between all languages
 
 ## Pull Request Guidelines
 
@@ -110,8 +131,8 @@ When modifying signing or hashing logic, ensure that:
 
 When reporting issues, please include:
 
-1. SDK version and language (TypeScript/Python)
-2. Node.js/Python version
+1. SDK version and language (TypeScript/Python/Rust/Go/Java)
+2. Runtime version (Node.js/Python/Rust/Go/Java)
 3. Operating system
 4. Steps to reproduce
 5. Expected vs actual behavior
@@ -127,7 +148,10 @@ Releases are managed by maintainers. The process is:
 4. Create GitHub Release with appropriate tag:
    - TypeScript: `typescript-v1.2.3`
    - Python: `python-v1.2.3`
-5. GitHub Actions automatically publishes to npm/PyPI
+   - Rust: `rust-v1.2.3`
+   - Go: `go-v1.2.3`
+   - Java: `java-v1.2.3`
+5. GitHub Actions automatically publishes to package registries
 
 ## Questions?
 
