@@ -140,7 +140,7 @@ function normalizePublicKey(publicKey: string): string {
  * valid but rejected by strict verifiers. This normalizes high-S to low-S by
  * computing S' = N - S where N is the curve order.
  */
-function normalizeSignatureToLowS(signatureHex: string): string {
+export function normalizeSignatureToLowS(signatureHex: string): string {
   const bytes = hexToBytes(signatureHex);
 
   // Parse DER signature: 0x30 <total_len> 0x02 <r_len> <r> 0x02 <s_len> <s>

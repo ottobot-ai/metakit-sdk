@@ -105,20 +105,53 @@ pub fn get_public_key_id(private_key: &str) -> Result<String> {
 
 /// Get DAG address from a public key
 ///
+/// Uses Constellation's address derivation:
+/// 1. Normalize public key to include 04 prefix
+/// 2. Prepend PKCS prefix (X.509 DER encoding header)
+/// 3. SHA-256 hash
+/// 4. Base58 encode
+/// 5. Take last 36 characters
+/// 6. Calculate parity digit (sum of numeric characters mod 9)
+/// 7. Result: DAG + parity + last36
+///
 /// # Arguments
 /// * `public_key` - Public key in hex format (with or without 04 prefix)
 pub fn get_address(public_key: &str) -> String {
-    let normalized_key = normalize_public_key(public_key);
-    let public_key_bytes = hex::decode(&normalized_key).unwrap_or_default();
+    // PKCS prefix for X.509 DER encoding (secp256k1)
+    const PKCS_PREFIX: &str = "3056301006072a8648ce3d020106052b8104000a034200";
 
-    // SHA-256 hash of public key
+    // Normalize public key to include 04 prefix
+    let normalized_key = normalize_public_key(public_key);
+
+    // Prepend PKCS prefix
+    let pkcs_encoded = format!("{}{}", PKCS_PREFIX, normalized_key);
+
+    // SHA-256 hash
+    let pkcs_bytes = hex::decode(&pkcs_encoded).unwrap_or_default();
     let mut hasher = Sha256::new();
-    hasher.update(&public_key_bytes);
+    hasher.update(&pkcs_bytes);
     let hash = hasher.finalize();
 
-    // Base58 encode and prepend DAG
+    // Base58 encode
     let encoded = base58_encode(&hash);
-    format!("DAG{}", encoded)
+
+    // Take last 36 characters
+    let last36 = if encoded.len() > 36 {
+        &encoded[encoded.len() - 36..]
+    } else {
+        &encoded
+    };
+
+    // Calculate parity digit (sum of numeric characters mod 9)
+    let digit_sum: u32 = last36
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .map(|c| c.to_digit(10).unwrap_or(0))
+        .sum();
+    let parity = digit_sum % 9;
+
+    // Return with DAG prefix, parity, and last36
+    format!("DAG{}{}", parity, last36)
 }
 
 /// Validate that a private key is correctly formatted

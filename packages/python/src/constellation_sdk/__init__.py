@@ -54,6 +54,29 @@ from .wallet import (
     key_pair_from_private_key,
 )
 
+# Currency transaction types
+from .currency_types import (
+    TOKEN_DECIMALS,
+    CurrencyTransactionValue,
+    CurrencyTransaction,
+    TransactionReference,
+    TransferParams,
+)
+
+# Currency transaction operations
+from .currency_transaction import (
+    create_currency_transaction,
+    create_currency_transaction_batch,
+    encode_currency_transaction,
+    get_transaction_reference,
+    hash_currency_transaction,
+    is_valid_dag_address,
+    sign_currency_transaction,
+    token_to_units,
+    units_to_token,
+    verify_currency_transaction,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -98,4 +121,21 @@ __all__ = [
     "get_address",
     "is_valid_private_key",
     "is_valid_public_key",
+    # Currency transaction types
+    "TransactionReference",
+    "CurrencyTransactionValue",
+    "CurrencyTransaction",
+    "TransferParams",
+    "TOKEN_DECIMALS",
+    # Currency transactions
+    "create_currency_transaction",
+    "create_currency_transaction_batch",
+    "sign_currency_transaction",
+    "verify_currency_transaction",
+    "encode_currency_transaction",
+    "hash_currency_transaction",
+    "get_transaction_reference",
+    "is_valid_dag_address",
+    "token_to_units",
+    "units_to_token",
 ]

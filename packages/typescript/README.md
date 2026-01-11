@@ -1,8 +1,8 @@
 # Constellation Metagraph SDK - TypeScript
 
-TypeScript SDK for signing data transactions on Constellation Network data metagraphs built with the [metakit](https://github.com/Constellation-Labs/metakit) framework.
+TypeScript SDK for signing data and currency transactions on Constellation Network metagraphs built with the [metakit](https://github.com/Constellation-Labs/metakit) framework.
 
-> **Note:** This SDK is for data transactions only. For currency transactions, use [dag4.js](https://github.com/StardustCollective/dag4.js) directly. This SDK implements the standardized serialization, hashing, and signing routines defined by metakit and may not be compatible with metagraphs using custom serialization.
+> **Scope:** This SDK supports both data transactions (state updates) and metagraph token transactions (value transfers). This SDK implements the standardized serialization, hashing, and signing routines defined by metakit and may not be compatible with metagraphs using custom serialization.
 
 ## Installation
 
@@ -34,9 +34,19 @@ const result = await verify(signed);
 console.log('Valid:', result.isValid);
 ```
 
+## Features
+
+- **Data Transactions**: Sign and verify metagraph state updates for submission to data L1 endpoints
+- **Currency Transactions**: Create and sign metagraph token transfers (v2 format)
+- **Multi-signature Support**: Add multiple signatures to transactions for multi-party authorization
+- **Cross-language Compatible**: Works seamlessly with Python, Rust, Go, and Java implementations
+- **Offline Transaction Creation**: Generate transactions without network access
+
 ## API Reference
 
-### High-Level API
+### Data Transactions
+
+#### High-Level API
 
 #### `createSignedObject<T>(value, privateKey, options?)`
 
@@ -189,11 +199,125 @@ interface VerificationResult {
   validProofs: SignatureProof[];
   invalidProofs: SignatureProof[];
 }
+
+interface TransactionReference {
+  hash: string;
+  ordinal: number;
+}
+
+interface CurrencyTransaction {
+  value: {
+    source: string;        // DAG address
+    destination: string;   // DAG address
+    amount: number;        // Amount in smallest units (1e-8)
+    fee: number;           // Fee in smallest units
+    parent: TransactionReference;
+    salt: string;
+  };
+  proofs: SignatureProof[];
+}
+
+interface TransferParams {
+  destination: string;     // DAG address
+  amount: number;          // Amount in token units (e.g., 100.5)
+  fee?: number;            // Fee in token units (defaults to 0)
+}
+```
+
+### Currency Transactions
+
+#### `createCurrencyTransaction(params, privateKey, lastRef)`
+
+Create a metagraph token transaction.
+
+```typescript
+import { createCurrencyTransaction } from '@constellation-network/metagraph-sdk';
+
+const tx = await createCurrencyTransaction(
+  {
+    destination: 'DAG...recipient',
+    amount: 100.5,  // 100.5 tokens
+    fee: 0,
+  },
+  privateKey,
+  { hash: 'abc123...', ordinal: 5 }  // Last transaction reference
+);
+```
+
+#### `createCurrencyTransactionBatch(transfers, privateKey, lastRef)`
+
+Create multiple token transactions in a batch.
+
+```typescript
+const transfers = [
+  { destination: 'DAG...1', amount: 10 },
+  { destination: 'DAG...2', amount: 20 },
+  { destination: 'DAG...3', amount: 30 },
+];
+
+const txns = await createCurrencyTransactionBatch(
+  transfers,
+  privateKey,
+  { hash: 'abc123...', ordinal: 5 }
+);
+```
+
+#### `signCurrencyTransaction(transaction, privateKey)`
+
+Add an additional signature to a currency transaction (for multi-sig).
+
+```typescript
+let tx = await createCurrencyTransaction(params, key1, lastRef);
+tx = await signCurrencyTransaction(tx, key2);
+// tx.proofs.length === 2
+```
+
+#### `verifyCurrencyTransaction(transaction)`
+
+Verify all signatures on a currency transaction.
+
+```typescript
+const result = await verifyCurrencyTransaction(tx);
+console.log('Valid:', result.isValid);
+```
+
+#### `hashCurrencyTransaction(transaction)`
+
+Hash a currency transaction.
+
+```typescript
+const hash = await hashCurrencyTransaction(tx);
+console.log('Hash:', hash.value);
+```
+
+#### `getTransactionReference(transaction, ordinal)`
+
+Get a transaction reference for chaining transactions.
+
+```typescript
+const ref = await getTransactionReference(tx, 6);
+// Use ref as lastRef for next transaction
+```
+
+#### Utility Functions
+
+```typescript
+// Validate DAG address
+isValidDagAddress('DAG...');  // true/false
+
+// Convert between token units and smallest units
+tokenToUnits(100.5);    // 10050000000
+unitsToToken(10050000000);  // 100.5
+
+// Token decimals constant
+TOKEN_DECIMALS;  // 1e-8
 ```
 
 ## Usage Examples
 
-### Submit DataUpdate to L1
+### Data Transactions
+
+#### Submit DataUpdate to L1
 
 ```typescript
 import { createSignedObject } from '@constellation-network/metagraph-sdk';
@@ -235,6 +359,99 @@ signed = await addSignature(signed, party3Key);
 
 // Verify all signatures
 const result = await verify(signed);
+console.log(`${result.validProofs.length} valid signatures`);
+```
+
+### Currency Transactions
+
+#### Create and Verify Token Transaction
+
+```typescript
+import {
+  generateKeyPair,
+  createCurrencyTransaction,
+  verifyCurrencyTransaction,
+} from '@constellation-network/metagraph-sdk';
+
+// Generate keys
+const senderKey = generateKeyPair();
+const recipientKey = generateKeyPair();
+
+// Get last transaction reference (from network or previous transaction)
+const lastRef = {
+  hash: 'abc123...previous-tx-hash',
+  ordinal: 5
+};
+
+// Create transaction
+const tx = await createCurrencyTransaction(
+  {
+    destination: recipientKey.address,
+    amount: 100.5,  // 100.5 tokens
+    fee: 0,
+  },
+  senderKey.privateKey,
+  lastRef
+);
+
+// Verify
+const result = await verifyCurrencyTransaction(tx);
+console.log('Transaction valid:', result.isValid);
+
+// Note: Network submission not yet implemented in this SDK
+// You can submit the transaction using dag4.js or custom network code
+```
+
+#### Batch Token Transactions
+
+```typescript
+import { createCurrencyTransactionBatch } from '@constellation-network/metagraph-sdk';
+
+const lastRef = { hash: 'abc123...', ordinal: 10 };
+
+const transfers = [
+  { destination: 'DAG...1', amount: 10, fee: 0 },
+  { destination: 'DAG...2', amount: 20, fee: 0 },
+  { destination: 'DAG...3', amount: 30, fee: 0 },
+];
+
+// Create batch (transactions are automatically chained)
+const txns = await createCurrencyTransactionBatch(
+  transfers,
+  privateKey,
+  lastRef
+);
+
+console.log(`Created ${txns.length} transactions`);
+// Transaction 1 uses ordinal 10
+// Transaction 2 uses ordinal 11
+// Transaction 3 uses ordinal 12
+```
+
+#### Multi-Signature Token Transaction
+
+```typescript
+import {
+  createCurrencyTransaction,
+  signCurrencyTransaction,
+  verifyCurrencyTransaction,
+} from '@constellation-network/metagraph-sdk';
+
+// Create transaction with first signature
+let tx = await createCurrencyTransaction(
+  { destination: 'DAG...', amount: 1000, fee: 0 },
+  party1PrivateKey,
+  lastRef
+);
+
+// Add second signature
+tx = await signCurrencyTransaction(tx, party2PrivateKey);
+
+// Add third signature
+tx = await signCurrencyTransaction(tx, party3PrivateKey);
+
+// Verify all signatures
+const result = await verifyCurrencyTransaction(tx);
 console.log(`${result.validProofs.length} valid signatures`);
 ```
 

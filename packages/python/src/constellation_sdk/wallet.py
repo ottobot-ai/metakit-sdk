@@ -103,31 +103,44 @@ def get_address(public_key: str) -> str:
     Get DAG address from a public key.
 
     Uses Constellation's address derivation:
-    1. SHA-256 hash of public key bytes
-    2. Convert to base58
-    3. Prepend "DAG"
+    1. SHA-256 hash of public key bytes (with 04 prefix)
+    2. Base58 encode
+    3. Take last 36 characters
+    4. Calculate parity digit (sum of numeric characters mod 9)
+    5. Result: DAG + parity + last36
 
     Args:
         public_key: Public key in hex format (with or without 04 prefix)
 
     Returns:
-        DAG address string
+        DAG address string (40 characters: DAG + parity + 36 chars)
     """
-    # Normalize public key
-    if public_key.startswith("04"):
-        pk_hex = public_key[2:]
-    else:
-        pk_hex = public_key
+    # PKCS prefix for X.509 DER encoding (secp256k1)
+    PKCS_PREFIX = "3056301006072a8648ce3d020106052b8104000a034200"
 
-    # SHA-256 hash of public key bytes
-    pk_bytes = bytes.fromhex(pk_hex)
-    hash_bytes = hashlib.sha256(pk_bytes).digest()
+    # Normalize public key to include 04 prefix
+    if not public_key.startswith("04"):
+        public_key = "04" + public_key
+
+    # Prepend PKCS prefix
+    pkcs_encoded = PKCS_PREFIX + public_key
+
+    # SHA-256 hash
+    pkcs_bytes = bytes.fromhex(pkcs_encoded)
+    hash_bytes = hashlib.sha256(pkcs_bytes).digest()
 
     # Base58 encode
     base58_encoded = _base58_encode(hash_bytes)
 
-    # Return with DAG prefix
-    return f"DAG{base58_encoded}"
+    # Take last 36 characters
+    last36 = base58_encoded[-36:]
+
+    # Calculate parity digit (sum of numeric characters mod 9)
+    digit_sum = sum(int(c) for c in last36 if c.isdigit())
+    parity = digit_sum % 9
+
+    # Return with DAG prefix, parity, and last36
+    return f"DAG{parity}{last36}"
 
 
 def is_valid_private_key(private_key: str) -> bool:

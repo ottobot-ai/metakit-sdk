@@ -88,6 +88,12 @@ pub enum SdkError {
 
     #[error("At least one private key is required")]
     NoPrivateKeys,
+
+    #[error("Invalid address: {0}")]
+    InvalidAddress(String),
+
+    #[error("Invalid amount: {0}")]
+    InvalidAmount(String),
 }
 
 impl From<hex::FromHexError> for SdkError {

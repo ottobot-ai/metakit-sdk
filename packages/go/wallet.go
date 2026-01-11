@@ -78,15 +78,39 @@ func GetPublicKeyID(privateKeyHex string) (string, error) {
 
 // GetAddress derives a DAG address from a public key
 func GetAddress(publicKeyHex string) string {
+	// PKCS prefix for X.509 DER encoding (secp256k1)
+	pkcsPrefix := "3056301006072a8648ce3d020106052b8104000a034200"
+
+	// Normalize public key to include 04 prefix
 	normalizedKey := NormalizePublicKey(publicKeyHex)
-	publicKeyBytes, _ := hex.DecodeString(normalizedKey)
 
-	// SHA-256 hash of public key
-	hash := sha256.Sum256(publicKeyBytes)
+	// Prepend PKCS prefix
+	pkcsEncoded := pkcsPrefix + normalizedKey
 
-	// Base58 encode and prepend DAG
+	// SHA-256 hash
+	pkcsBytes, _ := hex.DecodeString(pkcsEncoded)
+	hash := sha256.Sum256(pkcsBytes)
+
+	// Base58 encode
 	encoded := base58Encode(hash[:])
-	return "DAG" + encoded
+
+	// Take last 36 characters
+	last36 := encoded
+	if len(encoded) > 36 {
+		last36 = encoded[len(encoded)-36:]
+	}
+
+	// Calculate parity digit (sum of numeric characters mod 9)
+	digitSum := 0
+	for _, c := range last36 {
+		if c >= '0' && c <= '9' {
+			digitSum += int(c - '0')
+		}
+	}
+	parity := digitSum % 9
+
+	// Return with DAG prefix, parity, and last36
+	return fmt.Sprintf("DAG%d%s", parity, last36)
 }
 
 // IsValidPrivateKey validates that a private key is correctly formatted

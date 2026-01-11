@@ -1,8 +1,8 @@
 # Constellation Metagraph SDK - Java
 
-Java SDK for signing data transactions on Constellation Network data metagraphs built with the [metakit](https://github.com/Constellation-Labs/metakit) framework.
+Java SDK for signing data and currency transactions on Constellation Network metagraphs built with the [metakit](https://github.com/Constellation-Labs/metakit) framework.
 
-> **Note:** This SDK is for data transactions only. It implements the standardized serialization, hashing, and signing routines defined by metakit and may not be compatible with metagraphs using custom serialization.
+> **Scope:** This SDK supports both data transactions (state updates) and metagraph token transactions (value transfers). It implements the standardized serialization, hashing, and signing routines defined by metakit and may not be compatible with metagraphs using custom serialization.
 
 ## Requirements
 
@@ -28,6 +28,8 @@ implementation 'io.constellationnetwork:metagraph-sdk:0.1.0'
 ```
 
 ## Quick Start
+
+### Data Transactions
 
 ```java
 import io.constellationnetwork.metagraph.sdk.*;
@@ -55,9 +57,36 @@ public class Example {
 }
 ```
 
+### Currency Transactions
+
+```java
+import io.constellationnetwork.metagraph.sdk.*;
+
+public class CurrencyExample {
+    public static void main(String[] args) {
+        // Generate keys
+        Types.KeyPair sender = Wallet.generateKeyPair();
+        Types.KeyPair recipient = Wallet.generateKeyPair();
+
+        // Create token transaction
+        CurrencyTypes.CurrencyTransaction tx = CurrencyTransaction.createCurrencyTransaction(
+            new CurrencyTypes.TransferParams(recipient.getAddress(), 100.5, 0),
+            sender.getPrivateKey(),
+            new CurrencyTypes.TransactionReference("abc123...", 0)
+        );
+
+        // Verify
+        Types.VerificationResult result = CurrencyTransaction.verifyCurrencyTransaction(tx);
+        System.out.println("Valid: " + result.isValid());
+    }
+}
+```
+
 ## API Reference
 
-### High-Level API
+### Data Transactions
+
+#### High-Level API
 
 #### `SignedObject.createSignedObject(value, privateKey, isDataUpdate)`
 
@@ -189,6 +218,89 @@ Get the public key ID (128 chars, no 04 prefix) for use in proofs.
 String id = Wallet.getPublicKeyId(privateKey);
 ```
 
+### Currency Transactions
+
+#### `CurrencyTransaction.createCurrencyTransaction(params, privateKey, lastRef)`
+
+Create a metagraph token transaction.
+
+```java
+CurrencyTypes.CurrencyTransaction tx = CurrencyTransaction.createCurrencyTransaction(
+    new CurrencyTypes.TransferParams("DAG...recipient", 100.5, 0),
+    privateKey,
+    new CurrencyTypes.TransactionReference("abc123...", 5)
+);
+```
+
+#### `CurrencyTransaction.createCurrencyTransactionBatch(transfers, privateKey, lastRef)`
+
+Create multiple token transactions in a batch.
+
+```java
+List<CurrencyTypes.TransferParams> transfers = Arrays.asList(
+    new CurrencyTypes.TransferParams("DAG...1", 10, 0),
+    new CurrencyTypes.TransferParams("DAG...2", 20, 0),
+    new CurrencyTypes.TransferParams("DAG...3", 30, 0)
+);
+
+List<CurrencyTypes.CurrencyTransaction> txns = CurrencyTransaction.createCurrencyTransactionBatch(
+    transfers,
+    privateKey,
+    new CurrencyTypes.TransactionReference("abc123...", 5)
+);
+```
+
+#### `CurrencyTransaction.signCurrencyTransaction(transaction, privateKey)`
+
+Add an additional signature to a currency transaction (for multi-sig).
+
+```java
+CurrencyTypes.CurrencyTransaction tx = CurrencyTransaction.createCurrencyTransaction(params, key1, lastRef);
+tx = CurrencyTransaction.signCurrencyTransaction(tx, key2);
+// tx.getProofs().size() == 2
+```
+
+#### `CurrencyTransaction.verifyCurrencyTransaction(transaction)`
+
+Verify all signatures on a currency transaction.
+
+```java
+Types.VerificationResult result = CurrencyTransaction.verifyCurrencyTransaction(tx);
+System.out.println("Valid: " + result.isValid());
+```
+
+#### `CurrencyTransaction.hashCurrencyTransaction(transaction)`
+
+Hash a currency transaction.
+
+```java
+Types.Hash hash = CurrencyTransaction.hashCurrencyTransaction(tx);
+System.out.println("Hash: " + hash.getValue());
+```
+
+#### `CurrencyTransaction.getTransactionReference(transaction, ordinal)`
+
+Get a transaction reference for chaining transactions.
+
+```java
+CurrencyTypes.TransactionReference ref = CurrencyTransaction.getTransactionReference(tx, 6);
+// Use ref as lastRef for next transaction
+```
+
+#### Utility Functions
+
+```java
+// Validate DAG address
+CurrencyTransaction.isValidDagAddress("DAG...");  // true/false
+
+// Convert between token units and smallest units
+CurrencyTransaction.tokenToUnits(100.5);    // 10050000000L
+CurrencyTransaction.unitsToToken(10050000000L);  // 100.5
+
+// Token decimals constant
+CurrencyTypes.TOKEN_DECIMALS;  // 1e-8
+```
+
 ## Types
 
 ```java
@@ -223,6 +335,31 @@ public class VerificationResult {
 
 // Exception type
 public class SdkException extends RuntimeException { }
+
+// Currency transaction types (io.constellationnetwork.metagraph.sdk.CurrencyTypes)
+
+public class TransactionReference {
+    String getHash();      // 64-char hex transaction hash
+    long getOrdinal();     // Transaction ordinal number
+}
+
+public class CurrencyTransactionValue {
+    String getSource();           // Source DAG address
+    String getDestination();      // Destination DAG address
+    long getAmount();             // Amount in smallest units (1e-8)
+    long getFee();                // Fee in smallest units (1e-8)
+    TransactionReference getParent();
+    String getSalt();             // Random salt for uniqueness
+}
+
+public class CurrencyTransaction extends Signed<CurrencyTransactionValue> {
+}
+
+public class TransferParams {
+    String getDestination();  // Destination DAG address
+    double getAmount();       // Amount in token units (e.g., 100.5 tokens)
+    double getFee();          // Fee in token units (defaults to 0)
+}
 ```
 
 ## Usage Examples
@@ -282,6 +419,105 @@ public class MultiSigExample {
 
         // Verify all signatures
         var result = SignedObject.verify(signed, false);
+        System.out.printf("%d valid signatures%n", result.getValidProofs().size());
+    }
+}
+```
+
+### Currency Transactions
+
+#### Create and Verify Token Transaction
+
+```java
+import io.constellationnetwork.metagraph.sdk.*;
+
+public class CurrencyExample {
+    public static void main(String[] args) {
+        // Generate keys
+        Types.KeyPair senderKey = Wallet.generateKeyPair();
+        Types.KeyPair recipientKey = Wallet.generateKeyPair();
+
+        // Get last transaction reference (from network or previous transaction)
+        CurrencyTypes.TransactionReference lastRef =
+            new CurrencyTypes.TransactionReference("abc123...previous-tx-hash", 5);
+
+        // Create transaction
+        CurrencyTypes.CurrencyTransaction tx = CurrencyTransaction.createCurrencyTransaction(
+            new CurrencyTypes.TransferParams(recipientKey.getAddress(), 100.5, 0),
+            senderKey.getPrivateKey(),
+            lastRef
+        );
+
+        // Verify
+        Types.VerificationResult result = CurrencyTransaction.verifyCurrencyTransaction(tx);
+        System.out.println("Transaction valid: " + result.isValid());
+
+        // Note: Network submission not yet implemented in this SDK
+        // You can submit the transaction using dag4.js or custom network code
+    }
+}
+```
+
+#### Batch Token Transactions
+
+```java
+import io.constellationnetwork.metagraph.sdk.*;
+import java.util.Arrays;
+import java.util.List;
+
+public class BatchExample {
+    public static void main(String[] args) {
+        Types.KeyPair keyPair = Wallet.generateKeyPair();
+        CurrencyTypes.TransactionReference lastRef =
+            new CurrencyTypes.TransactionReference("abc123...", 10);
+
+        List<CurrencyTypes.TransferParams> transfers = Arrays.asList(
+            new CurrencyTypes.TransferParams("DAG...1", 10, 0),
+            new CurrencyTypes.TransferParams("DAG...2", 20, 0),
+            new CurrencyTypes.TransferParams("DAG...3", 30, 0)
+        );
+
+        // Create batch (transactions are automatically chained)
+        List<CurrencyTypes.CurrencyTransaction> txns =
+            CurrencyTransaction.createCurrencyTransactionBatch(
+                transfers,
+                keyPair.getPrivateKey(),
+                lastRef
+            );
+
+        // txns.get(0).getValue().getParent().getOrdinal() == 10
+        // txns.get(1).getValue().getParent().getOrdinal() == 11
+        // txns.get(2).getValue().getParent().getOrdinal() == 12
+    }
+}
+```
+
+#### Multi-Signature Token Transaction
+
+```java
+import io.constellationnetwork.metagraph.sdk.*;
+
+public class MultiSigExample {
+    public static void main(String[] args) {
+        Types.KeyPair key1 = Wallet.generateKeyPair();
+        Types.KeyPair key2 = Wallet.generateKeyPair();
+        Types.KeyPair recipient = Wallet.generateKeyPair();
+
+        CurrencyTypes.TransactionReference lastRef =
+            new CurrencyTypes.TransactionReference("abc123...", 0);
+
+        // Create transaction with first signature
+        CurrencyTypes.CurrencyTransaction tx = CurrencyTransaction.createCurrencyTransaction(
+            new CurrencyTypes.TransferParams(recipient.getAddress(), 100, 0),
+            key1.getPrivateKey(),
+            lastRef
+        );
+
+        // Add second signature
+        tx = CurrencyTransaction.signCurrencyTransaction(tx, key2.getPrivateKey());
+
+        // Verify both signatures
+        Types.VerificationResult result = CurrencyTransaction.verifyCurrencyTransaction(tx);
         System.out.printf("%d valid signatures%n", result.getValidProofs().size());
     }
 }

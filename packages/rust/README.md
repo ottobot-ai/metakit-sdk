@@ -1,8 +1,8 @@
 # Constellation Metagraph SDK - Rust
 
-Rust SDK for signing data transactions on Constellation Network data metagraphs built with the [metakit](https://github.com/Constellation-Labs/metakit) framework.
+Rust SDK for signing data and currency transactions on Constellation Network metagraphs built with the [metakit](https://github.com/Constellation-Labs/metakit) framework.
 
-> **Note:** This SDK is for data transactions only. It implements the standardized serialization, hashing, and signing routines defined by metakit and may not be compatible with metagraphs using custom serialization.
+> **Scope:** This SDK supports both data transactions (state updates) and metagraph token transactions (value transfers). It implements the standardized serialization, hashing, and signing routines defined by metakit and may not be compatible with metagraphs using custom serialization.
 
 ## Installation
 
@@ -20,6 +20,8 @@ cargo add constellation-metagraph-sdk
 ```
 
 ## Quick Start
+
+### Data Transactions
 
 ```rust
 use constellation_sdk::{
@@ -44,9 +46,47 @@ fn main() {
 }
 ```
 
+### Currency Transactions
+
+```rust
+use constellation_sdk::{
+    generate_key_pair,
+    create_currency_transaction,
+    verify_currency_transaction,
+    TransferParams,
+    TransactionReference,
+};
+
+fn main() {
+    // Generate keys
+    let sender = generate_key_pair();
+    let recipient = generate_key_pair();
+
+    // Create token transaction
+    let tx = create_currency_transaction(
+        TransferParams {
+            destination: recipient.address,
+            amount: 100.5,
+            fee: 0.0,
+        },
+        &sender.private_key,
+        TransactionReference {
+            hash: "abc123...".to_string(),
+            ordinal: 0,
+        },
+    ).unwrap();
+
+    // Verify
+    let result = verify_currency_transaction(&tx);
+    println!("Valid: {}", result.is_valid);
+}
+```
+
 ## API Reference
 
-### High-Level API
+### Data Transactions
+
+#### High-Level API
 
 #### `create_signed_object(value, private_key, is_data_update) -> Result<Signed<T>>`
 
@@ -169,6 +209,98 @@ Get the public key ID (128 chars, no 04 prefix) for use in proofs.
 let id = get_public_key_id(&private_key)?;
 ```
 
+### Currency Transactions
+
+#### `create_currency_transaction(params, private_key, last_ref) -> Result<CurrencyTransaction>`
+
+Create a metagraph token transaction.
+
+```rust
+use constellation_sdk::{create_currency_transaction, TransferParams, TransactionReference};
+
+let tx = create_currency_transaction(
+    TransferParams {
+        destination: "DAG...recipient".to_string(),
+        amount: 100.5,  // 100.5 tokens
+        fee: 0.0,
+    },
+    &private_key,
+    TransactionReference {
+        hash: "abc123...".to_string(),
+        ordinal: 5,
+    },
+)?;
+```
+
+#### `create_currency_transaction_batch(transfers, private_key, last_ref) -> Result<Vec<CurrencyTransaction>>`
+
+Create multiple token transactions in a batch.
+
+```rust
+let transfers = vec![
+    TransferParams { destination: "DAG...1".to_string(), amount: 10.0, fee: 0.0 },
+    TransferParams { destination: "DAG...2".to_string(), amount: 20.0, fee: 0.0 },
+    TransferParams { destination: "DAG...3".to_string(), amount: 30.0, fee: 0.0 },
+];
+
+let txns = create_currency_transaction_batch(
+    transfers,
+    &private_key,
+    TransactionReference { hash: "abc123...".to_string(), ordinal: 5 },
+)?;
+```
+
+#### `sign_currency_transaction(transaction, private_key) -> Result<CurrencyTransaction>`
+
+Add an additional signature to a currency transaction (for multi-sig).
+
+```rust
+let mut tx = create_currency_transaction(params, &key1, last_ref)?;
+tx = sign_currency_transaction(&tx, &key2)?;
+// tx.proofs.len() == 2
+```
+
+#### `verify_currency_transaction(transaction) -> VerificationResult`
+
+Verify all signatures on a currency transaction.
+
+```rust
+let result = verify_currency_transaction(&tx);
+println!("Valid: {}", result.is_valid);
+```
+
+#### `hash_currency_transaction(transaction) -> Hash`
+
+Hash a currency transaction.
+
+```rust
+let hash = hash_currency_transaction(&tx);
+println!("Hash: {}", hash.value);
+```
+
+#### `get_transaction_reference(transaction, ordinal) -> TransactionReference`
+
+Get a transaction reference for chaining transactions.
+
+```rust
+let tx_ref = get_transaction_reference(&tx, 6);
+// Use tx_ref as last_ref for next transaction
+```
+
+#### Utility Functions
+
+```rust
+// Validate DAG address
+is_valid_dag_address("DAG...");  // true/false
+
+// Convert between token units and smallest units
+token_to_units(100.5);    // 10050000000
+units_to_token(10050000000);  // 100.5
+
+// Token decimals constant
+TOKEN_DECIMALS;  // 1e-8
+```
+
 ## Types
 
 ```rust
@@ -197,6 +329,29 @@ pub struct VerificationResult {
     pub is_valid: bool,
     pub valid_proofs: Vec<SignatureProof>,
     pub invalid_proofs: Vec<SignatureProof>,
+}
+
+// Currency transaction types
+pub struct TransactionReference {
+    pub hash: String,      // 64-char hex transaction hash
+    pub ordinal: i64,      // Transaction ordinal number
+}
+
+pub struct CurrencyTransactionValue {
+    pub source: String,         // Source DAG address
+    pub destination: String,    // Destination DAG address
+    pub amount: i64,           // Amount in smallest units (1e-8)
+    pub fee: i64,              // Fee in smallest units (1e-8)
+    pub parent: TransactionReference,
+    pub salt: String,          // Random salt for uniqueness
+}
+
+pub type CurrencyTransaction = Signed<CurrencyTransactionValue>;
+
+pub struct TransferParams {
+    pub destination: String,   // Destination DAG address
+    pub amount: f64,          // Amount in token units (e.g., 100.5 tokens)
+    pub fee: f64,             // Fee in token units (defaults to 0)
 }
 ```
 
@@ -244,6 +399,119 @@ signed = add_signature(&signed, &party3_key, false)?;
 
 // Verify all signatures
 let result = verify(&signed, false);
+println!("{} valid signatures", result.valid_proofs.len());
+```
+
+### Currency Transactions
+
+#### Create and Verify Token Transaction
+
+```rust
+use constellation_sdk::{
+    generate_key_pair,
+    create_currency_transaction,
+    verify_currency_transaction,
+    TransferParams,
+    TransactionReference,
+};
+
+// Generate keys
+let sender_key = generate_key_pair();
+let recipient_key = generate_key_pair();
+
+// Get last transaction reference (from network or previous transaction)
+let last_ref = TransactionReference {
+    hash: "abc123...previous-tx-hash".to_string(),
+    ordinal: 5,
+};
+
+// Create transaction
+let tx = create_currency_transaction(
+    TransferParams {
+        destination: recipient_key.address.clone(),
+        amount: 100.5,  // 100.5 tokens
+        fee: 0.0,
+    },
+    &sender_key.private_key,
+    last_ref,
+)?;
+
+// Verify
+let result = verify_currency_transaction(&tx);
+println!("Transaction valid: {}", result.is_valid);
+
+// Note: Network submission not yet implemented in this SDK
+// You can submit the transaction using dag4.js or custom network code
+```
+
+#### Batch Token Transactions
+
+```rust
+use constellation_sdk::{
+    create_currency_transaction_batch,
+    TransferParams,
+    TransactionReference,
+};
+
+let last_ref = TransactionReference {
+    hash: "abc123...".to_string(),
+    ordinal: 10,
+};
+
+let transfers = vec![
+    TransferParams { destination: "DAG...1".to_string(), amount: 10.0, fee: 0.0 },
+    TransferParams { destination: "DAG...2".to_string(), amount: 20.0, fee: 0.0 },
+    TransferParams { destination: "DAG...3".to_string(), amount: 30.0, fee: 0.0 },
+];
+
+// Create batch (transactions are automatically chained)
+let txns = create_currency_transaction_batch(
+    transfers,
+    &private_key,
+    last_ref,
+)?;
+
+// txns[0].value.parent.ordinal == 10
+// txns[1].value.parent.ordinal == 11
+// txns[2].value.parent.ordinal == 12
+```
+
+#### Multi-Signature Token Transaction
+
+```rust
+use constellation_sdk::{
+    create_currency_transaction,
+    sign_currency_transaction,
+    verify_currency_transaction,
+    TransferParams,
+    TransactionReference,
+};
+
+let key1 = generate_key_pair();
+let key2 = generate_key_pair();
+let recipient = generate_key_pair();
+
+let last_ref = TransactionReference {
+    hash: "abc123...".to_string(),
+    ordinal: 0,
+};
+
+// Create transaction with first signature
+let mut tx = create_currency_transaction(
+    TransferParams {
+        destination: recipient.address.clone(),
+        amount: 100.0,
+        fee: 0.0,
+    },
+    &key1.private_key,
+    last_ref,
+)?;
+
+// Add second signature
+tx = sign_currency_transaction(&tx, &key2.private_key)?;
+
+// Verify both signatures
+let result = verify_currency_transaction(&tx);
 println!("{} valid signatures", result.valid_proofs.len());
 ```
 

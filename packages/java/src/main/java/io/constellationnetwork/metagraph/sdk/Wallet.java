@@ -107,18 +107,53 @@ public final class Wallet {
     /**
      * Get DAG address from a public key.
      *
+     * Uses Constellation's address derivation:
+     * 1. Normalize public key to include 04 prefix
+     * 2. Prepend PKCS prefix (X.509 DER encoding header)
+     * 3. SHA-256 hash
+     * 4. Base58 encode
+     * 5. Take last 36 characters
+     * 6. Calculate parity digit (sum of numeric characters mod 9)
+     * 7. Result: DAG + parity + last36
+     *
      * @param publicKey Public key in hex format (with or without 04 prefix)
-     * @return DAG address
+     * @return DAG address (40 characters: DAG + parity + 36 chars)
      */
     public static String getAddress(String publicKey) {
+        // PKCS prefix for X.509 DER encoding (secp256k1)
+        final String PKCS_PREFIX = "3056301006072a8648ce3d020106052b8104000a034200";
+
+        // Normalize public key to include 04 prefix
         String normalizedKey = normalizePublicKey(publicKey);
-        byte[] publicKeyBytes = hexToBytes(normalizedKey);
+
+        // Prepend PKCS prefix
+        String pkcsEncoded = PKCS_PREFIX + normalizedKey;
 
         try {
+            // SHA-256 hash
+            byte[] pkcsBytes = hexToBytes(pkcsEncoded);
             MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-            byte[] hash = sha256.digest(publicKeyBytes);
+            byte[] hash = sha256.digest(pkcsBytes);
+
+            // Base58 encode
             String encoded = base58Encode(hash);
-            return "DAG" + encoded;
+
+            // Take last 36 characters
+            String last36 = encoded.length() > 36
+                    ? encoded.substring(encoded.length() - 36)
+                    : encoded;
+
+            // Calculate parity digit (sum of numeric characters mod 9)
+            int digitSum = 0;
+            for (char c : last36.toCharArray()) {
+                if (Character.isDigit(c)) {
+                    digitSum += Character.getNumericValue(c);
+                }
+            }
+            int parity = digitSum % 9;
+
+            // Return with DAG prefix, parity, and last36
+            return "DAG" + parity + last36;
         } catch (NoSuchAlgorithmException e) {
             throw new Types.SdkException("SHA-256 not available", e);
         }

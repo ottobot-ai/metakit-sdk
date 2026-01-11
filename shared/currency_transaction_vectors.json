@@ -1,0 +1,150 @@
+{
+  "version" : "v2",
+  "generatedAt" : "2026-01-10T23:21:42.985677Z",
+  "generatedBy" : "scala/tessellation-sdk",
+  "cryptoParams" : {
+    "curve" : "secp256k1",
+    "signatureAlgorithm" : "SHA512withECDSA",
+    "hashAlgorithm" : "SHA-256",
+    "kryoSetReferences" : false
+  },
+  "testVectors" : {
+    "basicTransaction" : {
+      "source" : "scala",
+      "type" : "CurrencyTransaction",
+      "privateKeyHex" : "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "publicKeyHex" : "04bb50e2d89a4ed70663d080659fe0ad4b9bc3e06c17a227433966cb59ceee020decddbf6e00192011648d13b1c00af770c0c1bb609d4d3a5c98a43772e0e18ef4",
+      "peerId" : "bb50e2d89a4ed70663d080659fe0ad4b9bc3e06c17a227433966cb59ceee020decddbf6e00192011648d13b1c00af770c0c1bb609d4d3a5c98a43772e0e18ef4",
+      "address" : "DAG1vTmrhDPkNkUEb5yGbH9i5R9xTDNMFpHQwRvR",
+      "transaction" : {
+        "source" : "DAG1vTmrhDPkNkUEb5yGbH9i5R9xTDNMFpHQwRvR",
+        "destination" : "DAG4o41NzhfX6DyYBTTXu6sJa6awm36abJpv89jB",
+        "amount" : 10050000000,
+        "fee" : 0,
+        "parent" : {
+          "ordinal" : 0,
+          "hash" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "salt" : 9007199254740992
+      },
+      "encodedString" : "240DAG1vTmrhDPkNkUEb5yGbH9i5R9xTDNMFpHQwRvR40DAG4o41NzhfX6DyYBTTXu6sJa6awm36abJpv89jB925706d48064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa10101420000000000000",
+      "kryoBytesHex" : "03f6023234304441473176546d726844506b4e6b554562357947624839693552397854444e4d46704851775276523430444147346f34314e7a68665836447959425454587536734a613661776d333661624a707638396a42393235373036643438303634616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161613130313031343230303030303030303030303030",
+      "transactionHash" : "5b7e930be16d49adaf75ee5e5c63ac27f61a4a47058ab54ff10e9095f3bf6409",
+      "encodedStringHash" : "5b7e930be16d49adaf75ee5e5c63ac27f61a4a47058ab54ff10e9095f3bf6409",
+      "signature" : "3045022100efcc64a7eb09959676bbc228092fec1931e99d8e1a1ac61b046d482bbafb5ec70220687c98dee3a02347174ecbe6f5961fe43b99225a35312bb0f3c5b3da6d1a148a",
+      "signerId" : "bb50e2d89a4ed70663d080659fe0ad4b9bc3e06c17a227433966cb59ceee020decddbf6e00192011648d13b1c00af770c0c1bb609d4d3a5c98a43772e0e18ef4"
+    },
+    "encodingBreakdown" : {
+      "components" : {
+        "versionPrefix" : "2",
+        "source" : {
+          "length" : 40,
+          "value" : "DAG1vTmrhDPkNkUEb5yGbH9i5R9xTDNMFpHQwRvR"
+        },
+        "destination" : {
+          "length" : 40,
+          "value" : "DAG4o41NzhfX6DyYBTTXu6sJa6awm36abJpv89jB"
+        },
+        "amountHex" : {
+          "length" : 9,
+          "value" : "25706d480"
+        },
+        "parentHash" : {
+          "length" : 64,
+          "value" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "ordinal" : {
+          "length" : 1,
+          "value" : "0"
+        },
+        "fee" : {
+          "length" : 1,
+          "value" : "0"
+        },
+        "saltHex" : {
+          "length" : 14,
+          "value" : "20000000000000"
+        }
+      },
+      "fullEncoded" : "240DAG1vTmrhDPkNkUEb5yGbH9i5R9xTDNMFpHQwRvR40DAG4o41NzhfX6DyYBTTXu6sJa6awm36abJpv89jB925706d48064aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa10101420000000000000"
+    },
+    "kryoSerialization" : {
+      "shortString" : {
+        "input" : "Hello",
+        "kryoHex" : "038648656c6c6f",
+        "explanation" : "0x03 (string type) + length byte + UTF-8 bytes (no ref flag for v2)"
+      },
+      "mediumString" : {
+        "input" : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "kryoHexPrefix" : "03e50178787878787878"
+      }
+    },
+    "multiSignature" : {
+      "transactionHash" : "5b7e930be16d49adaf75ee5e5c63ac27f61a4a47058ab54ff10e9095f3bf6409",
+      "proofs" : [
+        {
+          "id" : "97855f402631f09e602e5ccadc219503f07cdd4c73b2215b5418f52a7fdbfcd97c59d67b478562b62269ec23d6dfc5566bacbdc25606d4ccfd5de7cfadcf4be8",
+          "signature" : "3044022045c7fe8283aa68d4b94c9e7cc1bfe05637ea7ca15061b2c1dc5a63c83f7363f302203caf9800104f4e5d9a2f5d3dc64a6abaaad9f799fc95aed08c3536b99a731fcf",
+          "valid" : true
+        },
+        {
+          "id" : "bb50e2d89a4ed70663d080659fe0ad4b9bc3e06c17a227433966cb59ceee020decddbf6e00192011648d13b1c00af770c0c1bb609d4d3a5c98a43772e0e18ef4",
+          "signature" : "3046022100bed86135c076b65cd60ad74740deaf3982303f8652fe3e6fada305ee43f7ddd00221008392cba2071ee6d0b11d5b3f41d917556272d7ead24287610612d4ab95243cb2",
+          "valid" : true
+        }
+      ]
+    },
+    "transactionChaining" : {
+      "transactions" : [
+        {
+          "index" : 1,
+          "hash" : "e03eed120d565eb9eb73fb5db1c229b62fe2ddbf0baeb7ab4a493334b5c5e6bd",
+          "ordinal" : 6,
+          "parentHash" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "parentOrdinal" : 5,
+          "amount" : 1000000000,
+          "salt" : 1111111111111111
+        },
+        {
+          "index" : 2,
+          "hash" : "21aa818a9a3216500b5445f104c5a7ecbaf9750657712f23346fd951cdb55c28",
+          "ordinal" : 7,
+          "parentHash" : "e03eed120d565eb9eb73fb5db1c229b62fe2ddbf0baeb7ab4a493334b5c5e6bd",
+          "parentOrdinal" : 6,
+          "amount" : 2000000000,
+          "salt" : 2222222222222222
+        },
+        {
+          "index" : 3,
+          "hash" : "a5cc79e84fabea1246256aba6636f7d067420a89cf339145b3784f9d439129e2",
+          "ordinal" : 8,
+          "parentHash" : "21aa818a9a3216500b5445f104c5a7ecbaf9750657712f23346fd951cdb55c28",
+          "parentOrdinal" : 7,
+          "amount" : 3000000000,
+          "salt" : 3333333333333333
+        }
+      ]
+    },
+    "edgeCases" : {
+      "minAmount" : {
+        "amount" : 1,
+        "hash" : "9d273c99e33e76f3d9eff9aa458dbf677e04f3db2a3c37ddb0b315658f07eeeb",
+        "encoded" : "240DAG1vTmrhDPkNkUEb5yGbH9i5R9xTDNMFpHQwRvR40DAG4o41NzhfX6DyYBTTXu6sJa6awm36abJpv89jB1164bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb10101338d7ea4c68000",
+        "signature" : "304502203f7ada9d9657eb690cfc33fc10604db36c6fd31fd7766719ea080ffc3ed373ae022100a2edcee20b8f6c69736254ab3e28adcea44b9b089f6469c4cddade98415fae4d"
+      },
+      "maxAmount" : {
+        "amount" : 9223372036854775807,
+        "hash" : "a13a947072ac2a1ce022658a984808ca4c5e9c338da048765fffcdf877dbdbc2",
+        "encoded" : "240DAG1vTmrhDPkNkUEb5yGbH9i5R9xTDNMFpHQwRvR40DAG4o41NzhfX6DyYBTTXu6sJa6awm36abJpv89jB167fffffffffffffff64bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb10101371afd498d0000",
+        "signature" : "3046022100b422c08d5e6e2d8c8b075fbb6640e82828e879051e0a80d9bdc8d54887b37f0c022100c1aa67d8007ac94f409fa9ca8e87608f11bdc9496778339cb7dafaaf7034dc18"
+      },
+      "withFee" : {
+        "amount" : 10000000000,
+        "fee" : 100000,
+        "hash" : "dd7e896bac55b7653f81cc890af53cd9c31385a7ffc2ef1c12f31be2f5592026",
+        "encoded" : "240DAG1vTmrhDPkNkUEb5yGbH9i5R9xTDNMFpHQwRvR40DAG4o41NzhfX6DyYBTTXu6sJa6awm36abJpv89jB92540be40064bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb10610000013aa87bee538000",
+        "signature" : "304402206c62c7ef94a058a6b2a06ab6f05b7e75589a983eeefb5e6e457d9938d908ee1802205826eb9b785b490bcb774fc3cfb9288d5d05a63b9d9327f91fa6e4f41129baa0"
+      }
+    }
+  }
+}

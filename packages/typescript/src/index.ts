@@ -49,3 +49,27 @@ export {
   isValidPrivateKey,
   isValidPublicKey,
 } from './wallet';
+
+// Currency transaction types
+export type {
+  TransactionReference,
+  CurrencyTransactionValue,
+  CurrencyTransaction,
+  TransferParams,
+} from './currency-types';
+
+export { TOKEN_DECIMALS } from './currency-types';
+
+// Currency transaction operations
+export {
+  createCurrencyTransaction,
+  createCurrencyTransactionBatch,
+  signCurrencyTransaction,
+  verifyCurrencyTransaction,
+  encodeCurrencyTransaction,
+  hashCurrencyTransaction,
+  getTransactionReference,
+  isValidDagAddress,
+  tokenToUnits,
+  unitsToToken,
+} from './currency-transaction';
