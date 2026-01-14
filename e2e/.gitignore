@@ -1,0 +1,11 @@
+# Config with actual secrets
+config.json
+
+# Go
+go/go.sum
+
+# Rust
+rust/target/
+
+# Java
+java/target/

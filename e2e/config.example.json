@@ -1,0 +1,7 @@
+{
+  "private_key": "YOUR_64_CHAR_HEX_PRIVATE_KEY_HERE",
+  "destination": "DAG_DESTINATION_ADDRESS_HERE",
+  "amount": 1.0,
+  "fee": 0.0,
+  "currency_l1_url": "http://localhost:9300"
+}
