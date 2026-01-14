@@ -35,6 +35,10 @@ coverage.xml
 # IDE
 .idea/
 .vscode/
+.metals/
+.bloop/
+.workspace/
+.claude/
 *.swp
 *.swo
 *~
