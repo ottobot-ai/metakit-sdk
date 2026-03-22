@@ -7,7 +7,7 @@
  * Card: Create billing and subscription management system (6986f8fd4a04ea440ee40017)
  */
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   // These imports will fail until implementation exists
   BillingService,
@@ -20,6 +20,7 @@ import {
   PaymentMethod,
   Trial,
 } from '../src/billing'; // This module doesn't exist yet
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 describe('BillingService', () => {
   let billingService: BillingService;
@@ -32,8 +33,7 @@ describe('BillingService', () => {
   describe('Payment Processing Integration', () => {
     it('should integrate with Stripe payment processor', async () => {
       // Arrange
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const paymentMethod: PaymentMethod = {
+      const paymentMethod: PaymentMethod = { // eslint-disable-line @typescript-eslint/no-unused-vars
         type: 'card',
         details: { last4: '4242', brand: 'visa' }
       };
