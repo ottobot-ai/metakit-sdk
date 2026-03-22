@@ -557,7 +557,7 @@ export class Trial {
     return subscription;
   }
 
-  async applyPromo(customerId: string, code: string): Promise<PromoResult> {
+  async applyPromo(_customerId: string, code: string): Promise<PromoResult> {
     const promo = VALID_PROMO_CODES[code];
     if (!promo) {
       throw new Error('Invalid or expired promotional code');
