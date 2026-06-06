@@ -296,6 +296,11 @@ impl<'a> Evaluator<'a> {
             "exists" => self.op_exists(values),
             "missing" => self.op_missing(values, ctx),
             "missing_some" => self.op_missing_some(values, ctx),
+            // ZK / crypto (Tier 1). These are pure precompiles over already-parsed
+            // hex args; they delegate to `crate::crypto`, byte-matching Scala CryptoOps.
+            "poseidon" => crate::crypto::poseidon(&values),
+            "pmt_verify" => crate::crypto::pmt_verify(&values),
+            "schnorr_verify" => crate::crypto::schnorr_verify(&values),
             other => Err(format!("Unsupported operator: {}", other)),
         }
     }

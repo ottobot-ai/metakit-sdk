@@ -19,6 +19,8 @@ pub const KNOWN_OPERATORS: &[&str] = &[
     "values", "keys", "get", "has", "entries",
     // Utility
     "length", "exists", "missing", "missing_some", "typeof",
+    // ZK / crypto (Tier 1) -- mirrors JsonLogicOp PoseidonOp / PmtVerifyOp / SchnorrVerifyOp
+    "poseidon", "pmt_verify", "schnorr_verify",
 ];
 
 pub fn is_known_operator(tag: &str) -> bool {
