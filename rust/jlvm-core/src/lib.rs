@@ -18,6 +18,7 @@
 //!   shortest double (via `ryu-js`). Even integers go through `f64` there, matching the
 //!   Scala canonicalizer.
 
+pub mod auth_db;
 pub mod canonical;
 pub mod coercion;
 pub mod crypto;
