@@ -588,6 +588,198 @@ pub fn groth16_verify(values: &[Value]) -> Result<Value, String> {
     }
 }
 
+// ===========================================================================
+// TIER-3b: BLS12-381 signatures (`bls_verify` / `bls_aggregate_verify`).
+//   Byte-for-byte port of the Scala `CryptoOps.blsVerify` / `blsAggregateVerify`
+//   over `Bls12381` (BouncyCastle 1.85 `BLS12_381ProofOfPossession`), itself a
+//   port of Constellation's canonical `BlsSigner` (tessellation-bls).
+//
+//   Ciphersuite (the byte-identity contract -- matches eth2 / IETF
+//   draft-irtf-cfrg-bls-signature ProofOfPossession AND ethereum/bls12-381-tests
+//   v0.1.2):
+//     * scheme    : ProofOfPossession (PoP)
+//     * variant   : minimal-pubkey-size -- pubkeys in G1, signatures in G2
+//     * pubkey    : 48-byte compressed G1   (`PUBLIC_KEY_BYTES`)
+//     * signature : 96-byte compressed G2   (`SIGNATURE_BYTES`)
+//     * hash-to-curve: expand_message_xmd over SHA-256 with the SSWU map (RO)
+//     * signature DST: BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_
+//
+//   Backed by `blst` (supranational/blst, the eth2 reference BLS library), whose
+//   `min_pk` module is exactly the minimal-pubkey-size variant. This is the same
+//   library and DST the published eth2 vectors were produced against, so Rust
+//   matching them PROVES Scala<->Rust BLS byte-identity (the Scala side already
+//   reproduces them via BouncyCastle).
+//
+//   Edge-case semantics mirror the Scala reference EXACTLY:
+//     * wrong WIDTH pk/sig -> Err (a JsonLogicException), via `hb::parse_bytes`
+//       with `Some(48)` / `Some(96)` at the opcode boundary -- NOT `false`.
+//     * bad / non-canonical / wrong-subgroup point (correct width) -> `false`
+//       (the Scala `Bls12381.verify` / `fastAggregateVerify` catch the
+//       decompression / subgroup failure and return `false`, never throw). blst
+//       returns an error from `key_validate` / `uncompress` / verify, which we
+//       map to `false`.
+//     * empty pubkey list (aggregate) -> Err (Scala `Either.cond(pks.nonEmpty)`).
+// ===========================================================================
+
+mod bls {
+    //! Thin wrapper over `blst::min_pk` fixing the eth2 PoP ciphersuite. Mirrors
+    //! the public surface of the Scala `Bls12381` object used by `CryptoOps`.
+
+    use blst::min_pk::{AggregatePublicKey, PublicKey, Signature};
+    use blst::BLST_ERROR;
+
+    /// Compressed G1 public-key size (minimal-pubkey-size variant).
+    pub(super) const PUBLIC_KEY_BYTES: usize = 48;
+
+    /// Compressed G2 signature / PoP size (minimal-pubkey-size variant).
+    pub(super) const SIGNATURE_BYTES: usize = 96;
+
+    /// Signature domain-separation tag for the ProofOfPossession ciphersuite
+    /// (`BLS12_381ProofOfPossession.sign` / `verify` DST in BouncyCastle 1.85;
+    /// identical to the eth2 / IETF `..._SIG_..._POP_` suite).
+    pub(super) const DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
+
+    /// Verify a single signature against a single public key + message.
+    ///
+    /// `pk` is a 48-byte compressed G1 point, `sig` a 96-byte compressed G2
+    /// point, `message` arbitrary bytes. Returns `false` (never panics) on any
+    /// malformed / non-canonical / wrong-subgroup input or failed check -- byte
+    /// for byte the Scala `Bls12381.verify` contract.
+    pub(super) fn verify(pk: &[u8], message: &[u8], sig: &[u8]) -> bool {
+        // Width is enforced at the opcode boundary; re-assert defensively (the
+        // Scala primitive also re-checks `pk.length != 48 || sig.length != 96`).
+        if pk.len() != PUBLIC_KEY_BYTES || sig.len() != SIGNATURE_BYTES {
+            return false;
+        }
+        // `key_validate` = decompress + subgroup check (BC's decompressG1 enforces
+        // subgroup membership); `uncompress` decompresses the G2 signature.
+        let pk = match PublicKey::key_validate(pk) {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+        let sig = match Signature::uncompress(sig) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        // sig_groupcheck = true (validate the sig subgroup), empty augmentation,
+        // pk_validate = true (re-validate the pubkey subgroup, as BC does).
+        sig.verify(true, message, DST, &[], &pk, true) == BLST_ERROR::BLST_SUCCESS
+    }
+
+    /// Verify an aggregate signature against N public keys + the single shared
+    /// message (same-message `fastAggregateVerify`).
+    ///
+    /// `pks` are N 48-byte compressed G1 points, `agg` a 96-byte compressed G2
+    /// point, `message` arbitrary bytes. Returns `false` (never panics) on an
+    /// empty list, any malformed / non-canonical / non-member point, or a failed
+    /// pairing check -- byte for byte the Scala `Bls12381.fastAggregateVerify`
+    /// contract (which returns `false` when `pks.isEmpty`; the opcode boundary
+    /// rejects the empty list earlier as an error, matching Scala's `CryptoOps`).
+    pub(super) fn fast_aggregate_verify(pks: &[Vec<u8>], message: &[u8], agg: &[u8]) -> bool {
+        if pks.is_empty() || agg.len() != SIGNATURE_BYTES {
+            return false;
+        }
+        // Decompress + subgroup-check every pubkey (BC `decompressG1`).
+        let mut parsed: Vec<PublicKey> = Vec::with_capacity(pks.len());
+        for pk in pks {
+            if pk.len() != PUBLIC_KEY_BYTES {
+                return false;
+            }
+            match PublicKey::key_validate(pk) {
+                Ok(p) => parsed.push(p),
+                Err(_) => return false,
+            }
+        }
+        let sig = match Signature::uncompress(agg) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        // Aggregate the (already subgroup-validated) pubkeys, then verify the
+        // single signature against the shared message -- exactly the
+        // BC `fastAggregateVerify` path.
+        let refs: Vec<&PublicKey> = parsed.iter().collect();
+        let agg_pk = match AggregatePublicKey::aggregate(&refs, false) {
+            Ok(a) => a.to_public_key(),
+            Err(_) => return false,
+        };
+        sig.verify(true, message, DST, &[], &agg_pk, false) == BLST_ERROR::BLST_SUCCESS
+    }
+}
+
+// ---------------------------------------------------------------------------
+// bls_verify: [pkHex(48B G1), msgHex, sigHex(96B G2)] -> bool.
+//   Eth2 / IETF ProofOfPossession ciphersuite
+//   (BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_).
+// ---------------------------------------------------------------------------
+
+/// `bls_verify([pkHex(48B), msgHex, sigHex(96B)]) -> bool`.
+///
+/// Byte-for-byte port of the Scala `CryptoOps.blsVerify`:
+///   * `pk` MUST be exactly 48 bytes, `sig` exactly 96 bytes (wrong width ->
+///     `Err`, a JsonLogicException);
+///   * `msg` is an arbitrary-width byte string;
+///   * a bad / non-canonical / wrong-subgroup point or a failed check is simply
+///     `false`, NOT an error.
+pub fn bls_verify(values: &[Value]) -> Result<Value, String> {
+    match values {
+        [pk_v, msg_v, sig_v] => {
+            let pk_hex = expect_str("bls_verify pk", pk_v)?;
+            let msg_hex = expect_str("bls_verify msg", msg_v)?;
+            let sig_hex = expect_str("bls_verify sig", sig_v)?;
+            let pk = hb::parse_bytes(pk_hex, Some(bls::PUBLIC_KEY_BYTES), "bls_verify pk")?;
+            let msg = hb::parse_bytes(msg_hex, None, "bls_verify msg")?;
+            let sig = hb::parse_bytes(sig_hex, Some(bls::SIGNATURE_BYTES), "bls_verify sig")?;
+            Ok(Value::Bool(bls::verify(&pk, &msg, &sig)))
+        }
+        _ => Err(format!(
+            "bls_verify: expected [pkHex(48B), msgHex, sigHex(96B)], got {values:?}"
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// bls_aggregate_verify: [[pkHex(48B), ...], msgHex, aggSigHex(96B)] -> bool.
+//   SAME-message N-of-N aggregation (threshold / multisig) via the Eth2
+//   ProofOfPossession fastAggregateVerify.
+// ---------------------------------------------------------------------------
+
+/// `bls_aggregate_verify([[pkHex(48B), ...], msgHex, aggSigHex(96B)]) -> bool`.
+///
+/// Byte-for-byte port of the Scala `CryptoOps.blsAggregateVerify`:
+///   * at least one pubkey is required (empty list -> `Err`);
+///   * every `pk` MUST be exactly 48 bytes, `aggSig` exactly 96 bytes (wrong
+///     width -> `Err`, a JsonLogicException);
+///   * `msg` is an arbitrary-width byte string;
+///   * any non-canonical / wrong-subgroup point or a failed pairing check is
+///     simply `false`, NOT an error.
+pub fn bls_aggregate_verify(values: &[Value]) -> Result<Value, String> {
+    match values {
+        [Value::Array(pks_v), msg_v, sig_v] => {
+            if pks_v.is_empty() {
+                return Err("bls_aggregate_verify: at least one public key required".into());
+            }
+            let msg_hex = expect_str("bls_aggregate_verify msg", msg_v)?;
+            let sig_hex = expect_str("bls_aggregate_verify aggSig", sig_v)?;
+            let pks: Vec<Vec<u8>> = pks_v
+                .iter()
+                .enumerate()
+                .map(|(i, pk_v)| {
+                    let role = format!("bls_aggregate_verify pk[{i}]");
+                    let h = expect_str(&role, pk_v)?;
+                    hb::parse_bytes(h, Some(bls::PUBLIC_KEY_BYTES), &role)
+                })
+                .collect::<Result<_, _>>()?;
+            let msg = hb::parse_bytes(msg_hex, None, "bls_aggregate_verify msg")?;
+            let agg_sig =
+                hb::parse_bytes(sig_hex, Some(bls::SIGNATURE_BYTES), "bls_aggregate_verify aggSig")?;
+            Ok(Value::Bool(bls::fast_aggregate_verify(&pks, &msg, &agg_sig)))
+        }
+        _ => Err(format!(
+            "bls_aggregate_verify: expected [[pkHex(48B), ...], msgHex, aggSigHex(96B)], got {values:?}"
+        )),
+    }
+}
+
 /// Build an on-curve BN254 G2 affine point from the parsed
 /// `(xReal, xImag, yReal, yImag)` Fp2 limbs; reject off-curve points. Mirrors
 /// the Scala `g2OnCurve` over `Bn254.G2`. Each Fp2 coordinate is
@@ -892,5 +1084,102 @@ mod tests {
             Value::Str(FIX_PROOF.into()),
         ]);
         assert!(err.is_err(), "wrong-width vkey must be an opcode error");
+    }
+
+    // -- Tier-3b: BLS12-381 PoP ciphersuite (blst min_pk) --------------------
+
+    /// The signature DST MUST be the eth2 / IETF ProofOfPossession suite tag.
+    #[test]
+    fn bls_dst_is_eth2_pop() {
+        assert_eq!(bls::DST, b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_");
+        assert_eq!(bls::PUBLIC_KEY_BYTES, 48);
+        assert_eq!(bls::SIGNATURE_BYTES, 96);
+    }
+
+    /// PUBLISHED ethereum/bls12-381-tests v0.1.2 `verify_valid_case_e8a50c445c855360`.
+    /// Independent ground truth: matching it (as the eth2-conformant Scala
+    /// `Bls12381` already does) proves Scala<->Rust BLS byte-identity.
+    #[test]
+    fn bls_published_verify_valid_case() {
+        let ok = bls_verify(&[
+            Value::Str("0xa491d1b0ecd9bb917989f0e74f0dea0422eac4a873e5e2644f368dffb9a6e20fd6e10c1b77654d067c0618f6e5a7f79a".into()),
+            Value::Str("0x0000000000000000000000000000000000000000000000000000000000000000".into()),
+            Value::Str("0xb6ed936746e01f8ecf281f020953fbf1f01debd5657c4a383940b020b26507f6076334f91e2366c96e9ab279fb5158090352ea1c5b0c9274504f4f0e7053af24802e51e4568d164fe986834f41e55c8e850ce1f98458c0cfc9ab380b55285a55".into()),
+        ])
+        .unwrap();
+        assert!(matches!(ok, Value::Bool(true)));
+    }
+
+    /// PUBLISHED `verify_wrong_pubkey_case_2f09d443ab8a3ac2`: a valid signature
+    /// checked against the wrong pubkey verifies `false` (NOT an error).
+    #[test]
+    fn bls_published_wrong_pubkey_is_false() {
+        let r = bls_verify(&[
+            Value::Str("0xb301803f8b5ac4a1133581fc676dfedc60d891dd5fa99028805e5ea5b08d3491af75d0707adab3b70c6a6a580217bf81".into()),
+            Value::Str("0x0000000000000000000000000000000000000000000000000000000000000000".into()),
+            Value::Str("0xb6ed936746e01f8ecf281f020953fbf1f01debd5657c4a383940b020b26507f6076334f91e2366c96e9ab279fb5158090352ea1c5b0c9274504f4f0e7053af24802e51e4568d164fe986834f41e55c8e850ce1f98458c0cfc9ab380b55285a55".into()),
+        ])
+        .unwrap();
+        assert!(matches!(r, Value::Bool(false)));
+    }
+
+    /// PUBLISHED `fast_aggregate_verify_valid_3d7576f3c0e3570a`: 3-signer
+    /// same-message aggregate verifies `true`.
+    #[test]
+    fn bls_published_fast_aggregate_verify_valid() {
+        let ok = bls_aggregate_verify(&[
+            Value::Array(vec![
+                Value::Str("0xa491d1b0ecd9bb917989f0e74f0dea0422eac4a873e5e2644f368dffb9a6e20fd6e10c1b77654d067c0618f6e5a7f79a".into()),
+                Value::Str("0xb301803f8b5ac4a1133581fc676dfedc60d891dd5fa99028805e5ea5b08d3491af75d0707adab3b70c6a6a580217bf81".into()),
+                Value::Str("0xb53d21a4cfd562c469cc81514d4ce5a6b577d8403d32a394dc265dd190b47fa9f829fdd7963afdf972e5e77854051f6f".into()),
+            ]),
+            Value::Str("0xabababababababababababababababababababababababababababababababab".into()),
+            Value::Str("0x9712c3edd73a209c742b8250759db12549b3eaf43b5ca61376d9f30e2747dbcf842d8b2ac0901d2a093713e20284a7670fcf6954e9ab93de991bb9b313e664785a075fc285806fa5224c82bde146561b446ccfc706a64b8579513cfc4ff1d930".into()),
+        ])
+        .unwrap();
+        assert!(matches!(ok, Value::Bool(true)));
+    }
+
+    /// PUBLISHED `fast_aggregate_verify_extra_pubkey_5a38e6b4017fe4dd`: an extra
+    /// 4th pubkey (not part of the 3-signer aggregate) verifies `false`.
+    #[test]
+    fn bls_published_fast_aggregate_verify_extra_pubkey() {
+        let r = bls_aggregate_verify(&[
+            Value::Array(vec![
+                Value::Str("0xa491d1b0ecd9bb917989f0e74f0dea0422eac4a873e5e2644f368dffb9a6e20fd6e10c1b77654d067c0618f6e5a7f79a".into()),
+                Value::Str("0xb301803f8b5ac4a1133581fc676dfedc60d891dd5fa99028805e5ea5b08d3491af75d0707adab3b70c6a6a580217bf81".into()),
+                Value::Str("0xb53d21a4cfd562c469cc81514d4ce5a6b577d8403d32a394dc265dd190b47fa9f829fdd7963afdf972e5e77854051f6f".into()),
+                Value::Str("0xb53d21a4cfd562c469cc81514d4ce5a6b577d8403d32a394dc265dd190b47fa9f829fdd7963afdf972e5e77854051f6f".into()),
+            ]),
+            Value::Str("0xabababababababababababababababababababababababababababababababab".into()),
+            Value::Str("0x9712c3edd73a209c742b8250759db12549b3eaf43b5ca61376d9f30e2747dbcf842d8b2ac0901d2a093713e20284a7670fcf6954e9ab93de991bb9b313e664785a075fc285806fa5224c82bde146561b446ccfc706a64b8579513cfc4ff1d930".into()),
+        ])
+        .unwrap();
+        assert!(matches!(r, Value::Bool(false)));
+    }
+
+    /// Wrong-WIDTH pk (47 bytes) is an opcode ERROR (a JsonLogicException), NOT
+    /// `false` -- mirrors the Scala `HexBytes.parseBytes(_, Some(48), ...)`.
+    #[test]
+    fn bls_wrong_width_pk_is_error() {
+        let bad_pk = format!("0x{}", "ab".repeat(47)); // 47 bytes
+        let err = bls_verify(&[
+            Value::Str(bad_pk),
+            Value::Str("0x636f6e7374656c6c6174696f6e2d736e617073686f742d30783031".into()),
+            Value::Str("0xa816e2440371eea63b85484f0111914874974cfb8f83833b214ba365bc1bc46cfd070d75c8decb6e9d9bcea0e2a2b92214cfe0bed5c00a7702741a2e92186454f76ba5e4e86804908e7a2f38a0f123941b3513bff5a4af6951c6c7a8e61b04ee".into()),
+        ]);
+        assert!(err.is_err(), "wrong-width pk must be an opcode error");
+    }
+
+    /// Empty pubkey list in aggregate verify is an opcode ERROR (matches the
+    /// Scala `Either.cond(pks.nonEmpty, ...)`).
+    #[test]
+    fn bls_aggregate_empty_pubkeys_is_error() {
+        let err = bls_aggregate_verify(&[
+            Value::Array(vec![]),
+            Value::Str("0x636f6d6d69747465652d726f756e642d37".into()),
+            Value::Str("0xa3f4674d9b713ca0598e394a19c98e5312eafd2b4e3698b41090651332d507d330d5a9e36aa46f8247ec84e1e0302c1c08bdd8f7944dc7a8daa0cb8c07b6c3837015b6c8533247c1c8876102d9650857c00924f9d7999f4df8a2a30af33c48d4".into()),
+        ]);
+        assert!(err.is_err(), "empty pubkey list must be an opcode error");
     }
 }
