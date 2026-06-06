@@ -19,9 +19,12 @@ use num_bigint::BigUint;
 use poseidon_bn254::merkle::{verify_inclusion, PoseidonMerkleProof};
 use sha2::{Digest, Sha256};
 
-/// Largest input width supported (matches the bundled circomlib constants:
-/// `t = #inputs + 1 <= 16`). Mirrors Scala's `PoseidonMaxInputs`.
-const POSEIDON_MAX_INPUTS: usize = poseidon_bn254::MAX_INPUTS; // 15
+/// Largest input count supported. The bundled circomlib constants cover widths
+/// `t = #inputs + 1` in `2..=5` (see `poseidon-bn254` `constants::MAX_WIDTH = 5`),
+/// so the real limit is `MAX_WIDTH - 1 = 4` inputs. This matches the Scala
+/// reference: `Poseidon.hash` requires `t <= MaxWidth=5`, i.e. at most 4 inputs;
+/// a 5-input call errors in BOTH impls.
+const POSEIDON_MAX_INPUTS: usize = poseidon_bn254::MAX_INPUTS; // 4
 
 // ---------------------------------------------------------------------------
 // poseidon: variadic field elements -> Fr hash (32B hex).

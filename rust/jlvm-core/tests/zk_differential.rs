@@ -7,11 +7,19 @@
 //!   - `pmt_verify`
 //!   - `schnorr_verify`
 //!
-//! For each case it evaluates the expression and asserts the result is
-//! BYTE-IDENTICAL to the `expected` value, in two ways:
-//!   1. STRUCTURAL: encoded-result JSON deep-equals the decoded `expected` JSON.
-//!   2. CANONICAL: RFC 8785 canonical bytes of result == canonical bytes of
-//!      `expected`. This is the byte-for-byte interop requirement.
+//! There are two kinds of case:
+//!   - VALUE cases carry `expected`. The result must be BYTE-IDENTICAL to it:
+//!       1. STRUCTURAL: encoded-result JSON deep-equals the decoded `expected`.
+//!       2. CANONICAL: RFC 8785 canonical bytes of result == canonical bytes of
+//!          `expected`. This is the byte-for-byte interop requirement.
+//!   - ERROR cases carry `"error": true` and NO `expected` (the shared error
+//!     convention). Evaluation MUST FAIL here (a Scala `JsonLogicException` /
+//!     thrown error maps to a Rust `Err`). If Rust instead returns a value, that
+//!     is a genuine Scala↔Rust parity bug and is reported loudly.
+//!
+//! Symmetrically, if a VALUE case's Scala-produced `expected` cannot be
+//! reproduced by Rust because Rust ERRORS, that too is surfaced as a parity bug
+//! rather than silently swallowed. The whole point is to EXPOSE divergence.
 //!
 //! EVERY Tier-1 vector MUST pass. Categories not yet implemented in the Rust
 //! core (smt/mpt/bn254/ecvrf/groth16, and the deferred bls ops) are skipped with
@@ -48,7 +56,10 @@ struct Case {
     category: String,
     expr: String,
     data: String,
-    expected: String,
+    /// `Some(json)` for a value/false case; `None` for an error case.
+    expected: Option<String>,
+    /// Error convention: `true` ⇒ evaluation MUST fail in this impl (no `expected`).
+    error: bool,
     note: Option<String>,
 }
 
@@ -65,11 +76,21 @@ fn load_cases() -> Vec<Case> {
     for cat in root["tests"].as_array().expect("tests array") {
         let category = cat["category"].as_str().unwrap_or("?").to_string();
         for c in cat["cases"].as_array().expect("cases array") {
+            let error = c.get("error").and_then(|e| e.as_bool()).unwrap_or(false);
+            let expected = c.get("expected").and_then(|e| e.as_str()).map(|s| s.to_string());
+            // Convention guard: a case is EITHER an error case (error:true, no expected)
+            // OR a value case (expected present, no error) — never both, never neither.
+            assert!(
+                error != expected.is_some(),
+                "[{category}] case must have exactly one of `expected` / `error:true`: {}",
+                c
+            );
             out.push(Case {
                 category: category.clone(),
                 expr: c["expr"].as_str().expect("expr string").to_string(),
                 data: c["data"].as_str().expect("data string").to_string(),
-                expected: c["expected"].as_str().expect("expected string").to_string(),
+                expected,
+                error,
                 note: c.get("note").and_then(|n| n.as_str()).map(|s| s.to_string()),
             });
         }
@@ -106,6 +127,8 @@ fn tier1_zk_differential_against_shared_vectors() {
     let mut tier1_total = 0usize;
     let mut struct_pass = 0usize;
     let mut canon_pass = 0usize;
+    let mut error_cases = 0usize; // cases marked `error:true` (Scala fails ⇒ Rust must fail)
+    let mut error_pass = 0usize; // of those, the ones where Rust also failed
     let mut failures: Vec<String> = Vec::new();
     let mut skipped: BTreeSet<String> = BTreeSet::new();
 
@@ -142,25 +165,54 @@ fn tier1_zk_differential_against_shared_vectors() {
                 continue;
             }
         };
-        let expr = match decode_expression(&expr_json) {
-            Ok(e) => e,
-            Err(e) => {
-                failures.push(format!("{label}\n    DECODE-ERR: {e}"));
-                continue;
-            }
-        };
         let data = decode_value(&data_json);
 
-        let result = match evaluate(&expr, &data) {
+        // Evaluate: decode + evaluate. Either step failing means "evaluation failed"
+        // for the purpose of the error convention (a JsonLogicException on the Scala
+        // side maps to an Err here).
+        let eval_result: Result<jlvm_core::value::Value, String> =
+            decode_expression(&expr_json).map_err(|e| format!("DECODE-ERR: {e}")).and_then(|expr| {
+                evaluate(&expr, &data).map_err(|e| format!("EVAL-ERR: {e}"))
+            });
+
+        // ---- ERROR CASE: Scala errors here; Rust MUST also error. -------------
+        if c.error {
+            error_cases += 1;
+            match eval_result {
+                Err(_) => {
+                    // Rust errored as required → both structural and canonical "pass".
+                    struct_pass += 1;
+                    canon_pass += 1;
+                    error_pass += 1;
+                }
+                Ok(v) => {
+                    // DIVERGENCE: Scala errors but Rust produced a value. Surface loudly.
+                    let got = encode_value(&v);
+                    failures.push(format!(
+                        "{label}\n    PARITY BUG: Scala ERRORS but Rust returned a value\n    got = {}",
+                        serde_json::to_string(&got).unwrap(),
+                    ));
+                }
+            }
+            continue;
+        }
+
+        // ---- VALUE CASE: Scala produced `expected`; Rust must reproduce it. ----
+        let result = match eval_result {
             Ok(v) => v,
             Err(e) => {
-                failures.push(format!("{label}\n    EVAL-ERR: {e}"));
+                // DIVERGENCE: Scala produced a value/false but Rust errored.
+                failures.push(format!(
+                    "{label}\n    PARITY BUG: Scala produced a value but Rust ERRORED\n    {e}\n    expected = {}",
+                    c.expected.as_deref().unwrap_or("<none>"),
+                ));
                 continue;
             }
         };
 
+        let expected_str = c.expected.as_deref().expect("value case has expected");
         let expected_json: serde_json::Value =
-            serde_json::from_str(&c.expected).expect("expected is valid JSON");
+            serde_json::from_str(expected_str).expect("expected is valid JSON");
         let expected_val = decode_value(&expected_json);
 
         // 1) Structural comparison.
@@ -192,6 +244,9 @@ fn tier1_zk_differential_against_shared_vectors() {
     eprintln!("\n============ JLVM Tier-1 ZK differential report ============");
     eprintln!("tier-1 categories:      {:?}", TIER1_CATEGORIES);
     eprintln!("tier-1 cases:           {tier1_total}");
+    eprintln!(
+        "error-convention cases: {error_pass}/{error_cases}  (Rust errors where Scala errors)"
+    );
     eprintln!(
         "structural pass:        {struct_pass}/{tier1_total}  ({:.1}%)",
         100.0 * struct_pass as f64 / tier1_total.max(1) as f64
