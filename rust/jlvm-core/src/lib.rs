@@ -22,6 +22,7 @@ pub mod auth_db;
 pub mod canonical;
 pub mod coercion;
 pub mod crypto;
+pub mod ecvrf;
 pub mod eval;
 pub mod expression;
 pub mod gas;

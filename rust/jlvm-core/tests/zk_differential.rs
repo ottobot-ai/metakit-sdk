@@ -7,6 +7,10 @@
 //!   - TIER-2a (auth-DB verifiers): `smt_verify`, `mpt_verify`,
 //!     `mpt_prefix_verify` -- SMT + MPT inclusion/absence/prefix proofs whose
 //!     JSON proofs are hashed through the metakit canonical-bytes SHA-256 seam.
+//!   - TIER-2b (BN254 curve + ECVRF): `bn254_add`, `bn254_mul`,
+//!     `bn254_pairing` (EIP-196/197 ecAdd/ecMul/ecPairing) and `ecvrf_verify`
+//!     (ECVRF-EDWARDS25519-SHA512-TAI, RFC 9381 suite 0x03). The `bn254_pairing`
+//!     identity and the RFC 9381 ecvrf vector are HARD ANCHORS.
 //!
 //! There are two kinds of case:
 //!   - VALUE cases carry `expected`. The result must be BYTE-IDENTICAL to it:
@@ -46,6 +50,14 @@ const TIER2A_CATEGORIES: &[&str] = &["smt_verify", "mpt_verify", "mpt_prefix_ver
 
 /// Tier-2a opcode tags (for any `known_answer` cross-check that lands later).
 const TIER2A_OPS: &[&str] = &["smt_verify", "mpt_verify", "mpt_prefix_verify"];
+
+/// The Tier-2b BN254 curve + ECVRF categories this Rust JLVM implements and must
+/// pass: ecAdd / ecMul / ecPairing (EIP-196/197) and ECVRF (RFC 9381 TAI).
+const TIER2B_CATEGORIES: &[&str] =
+    &["bn254_add", "bn254_mul", "bn254_pairing", "ecvrf_verify"];
+
+/// Tier-2b opcode tags (for any `known_answer` cross-check that lands later).
+const TIER2B_OPS: &[&str] = &["bn254_add", "bn254_mul", "bn254_pairing", "ecvrf_verify"];
 
 /// The single top-level operator tag of an expression, if it is an
 /// `{"op": ...}` object. Used to pull Tier-1 ops out of the `known_answer` mix.
@@ -330,4 +342,10 @@ fn tier1_zk_differential_against_shared_vectors() {
 fn tier2a_zk_differential_against_shared_vectors() {
     let r = run_differential(TIER2A_CATEGORIES, TIER2A_OPS);
     report_and_assert("Tier-2a", TIER2A_CATEGORIES, &r);
+}
+
+#[test]
+fn tier2b_zk_differential_against_shared_vectors() {
+    let r = run_differential(TIER2B_CATEGORIES, TIER2B_OPS);
+    report_and_assert("Tier-2b", TIER2B_CATEGORIES, &r);
 }
