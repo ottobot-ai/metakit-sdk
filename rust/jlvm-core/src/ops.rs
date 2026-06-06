@@ -25,6 +25,8 @@ pub const KNOWN_OPERATORS: &[&str] = &[
     "smt_verify", "mpt_verify", "mpt_prefix_verify",
     // BN254 curve ops + ECVRF (Tier 2b) -- mirrors JsonLogicOp Bn254AddOp / Bn254MulOp / Bn254PairingOp / EcVrfVerifyOp
     "bn254_add", "bn254_mul", "bn254_pairing", "ecvrf_verify",
+    // SP1 Groth16-BN254 verifier (Tier 3a) -- mirrors JsonLogicOp Groth16VerifyOp
+    "groth16_verify",
 ];
 
 pub fn is_known_operator(tag: &str) -> bool {

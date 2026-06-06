@@ -26,9 +26,15 @@
 //! reproduced by Rust because Rust ERRORS, that too is surfaced as a parity bug
 //! rather than silently swallowed. The whole point is to EXPOSE divergence.
 //!
-//! EVERY Tier-1 and Tier-2a vector MUST pass. Categories not yet implemented in
-//! the Rust core (bn254/ecvrf/groth16, and the deferred bls ops) are skipped with
-//! a report line, so the harness stays green as later waves land.
+//!   - TIER-3a (SP1 Groth16-BN254): `groth16_verify` -- the hardcoded SP1
+//!     v6.1.0 circuit VK + selector + public-input assembly + four-pairing
+//!     Groth16 check. The REAL SP1 proof (`sp1-groth16-premium` fixture) is a
+//!     HARD ANCHOR that MUST verify `true`; tamper / wrong-input cases MUST
+//!     verify `false`; wrong-width vkey cases MUST error.
+//!
+//! EVERY Tier-1, Tier-2a, Tier-2b and Tier-3a vector MUST pass. Categories not
+//! yet implemented in the Rust core (the deferred bls ops) are skipped with a
+//! report line, so the harness stays green as later waves land.
 
 use jlvm_core::canonical::canonicalize_string;
 use jlvm_core::value::{decode_value, encode_value};
@@ -58,6 +64,16 @@ const TIER2B_CATEGORIES: &[&str] =
 
 /// Tier-2b opcode tags (for any `known_answer` cross-check that lands later).
 const TIER2B_OPS: &[&str] = &["bn254_add", "bn254_mul", "bn254_pairing", "ecvrf_verify"];
+
+/// The Tier-3a SP1 Groth16-BN254 verifier category this Rust JLVM implements
+/// and must pass. The real-SP1-proof case (circuit v6.1.0, `sp1-groth16-premium`
+/// fixture) is a HARD ANCHOR: it MUST verify `true`; the tamper / wrong-input
+/// cases MUST verify `false`; and the wrong-width vkey cases MUST error.
+const TIER3A_CATEGORIES: &[&str] = &["groth16_verify"];
+
+/// Tier-3a opcode tags. The `known_answer` groth16_verify case (the same real
+/// SP1 fixture) is an independent anchor and must also pass.
+const TIER3A_OPS: &[&str] = &["groth16_verify"];
 
 /// The single top-level operator tag of an expression, if it is an
 /// `{"op": ...}` object. Used to pull Tier-1 ops out of the `known_answer` mix.
@@ -348,4 +364,21 @@ fn tier2a_zk_differential_against_shared_vectors() {
 fn tier2b_zk_differential_against_shared_vectors() {
     let r = run_differential(TIER2B_CATEGORIES, TIER2B_OPS);
     report_and_assert("Tier-2b", TIER2B_CATEGORIES, &r);
+}
+
+#[test]
+fn tier3a_zk_differential_against_shared_vectors() {
+    let r = run_differential(TIER3A_CATEGORIES, TIER3A_OPS);
+    report_and_assert("Tier-3a", TIER3A_CATEGORIES, &r);
+    // Sanity: the real SP1 proof + the 5 tamper cases + the 2 wrong-width vkey
+    // error cases = 8 groth16_verify cases, plus the known_answer anchor (= 9).
+    assert!(
+        r.total >= 8,
+        "expected the full groth16_verify category (>= 8 cases), got {}",
+        r.total
+    );
+    assert_eq!(
+        r.error_pass, r.error_cases,
+        "every wrong-width-vkey groth16_verify error case must error in Rust"
+    );
 }

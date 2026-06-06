@@ -265,6 +265,329 @@ pub fn bn254_pairing(values: &[Value]) -> Result<Value, String> {
     Ok(Value::Bool(pairing_product_is_one(&pairs)))
 }
 
+// ===========================================================================
+// TIER-3a: SP1 Groth16-BN254 verifier (`groth16_verify`).
+//   Byte-for-byte port of the Scala `Sp1Groth16Verifier` + `Groth16Verifier`
+//   (crypto/zk), SP1 groth16 circuit v6.1.0. The opcode boundary mirrors the
+//   Scala `CryptoOps.groth16Verify`:
+//     groth16_verify([vkeyHex(32B), publicValuesHex, proofHex]) -> bool
+//   * vkey MUST be exactly 32 bytes (wrong width -> Err, a JsonLogicException);
+//   * publicValues / proof are arbitrary-width byte strings;
+//   * `verify(...).isRight` -> true, any `Left(_)` -> false (a malformed but
+//     well-typed proof is simply invalid, NOT an error).
+// ===========================================================================
+
+mod groth16 {
+    //! Pure port of `Sp1Groth16Verifier` + `Groth16Verifier` (SP1 v6.1.0). The
+    //! hardcoded gnark VK constants, the SP1 framing checks and the four-pairing
+    //! Groth16 equation are reproduced verbatim from the Scala reference.
+
+    use super::{g1_on_curve, g2_on_curve, pairing_product_is_one, MulBigUint};
+    use crate::hex_bytes as hb;
+    use ark_bn254::{G1Affine, G2Affine};
+    use ark_ec::{AffineRepr, CurveGroup};
+    use num_bigint::BigUint;
+    use num_traits::Zero;
+    use sha2::{Digest, Sha256};
+    use std::sync::OnceLock;
+
+    // -- SP1 framing constants (Sp1Groth16Verifier) --------------------------
+
+    /// First 4 bytes of `VERIFIER_HASH()` from SP1VerifierGroth16.sol (v6.1.0).
+    const VERIFIER_SELECTOR: [u8; 4] = [0x43, 0x88, 0xa2, 0x1c];
+
+    /// `4 + 32 * 11` = selector + (exitCode, vkRoot, nonce, proof[8]).
+    const EXPECTED_PROOF_LENGTH: usize = 4 + 32 * 11;
+
+    /// `VK_ROOT()` from SP1VerifierGroth16.sol (v6.1.0).
+    fn vk_root() -> &'static BigUint {
+        static V: OnceLock<BigUint> = OnceLock::new();
+        V.get_or_init(|| {
+            BigUint::parse_bytes(
+                b"002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352",
+                16,
+            )
+            .expect("valid VK_ROOT")
+        })
+    }
+
+    /// Mask `(1 << 253) - 1` applied to the public-values sha256 digest.
+    fn digest_mask() -> &'static BigUint {
+        static M: OnceLock<BigUint> = OnceLock::new();
+        M.get_or_init(|| (BigUint::from(1u8) << 253usize) - BigUint::from(1u8))
+    }
+
+    /// `sha256(publicValues) & ((1 << 253) - 1)`.
+    fn hash_public_values(public_values: &[u8]) -> BigUint {
+        let digest = Sha256::digest(public_values);
+        BigUint::from_bytes_be(&digest) & digest_mask()
+    }
+
+    fn bi(s: &str) -> BigUint {
+        BigUint::parse_bytes(s.as_bytes(), 10).expect("valid decimal constant")
+    }
+
+    // -- Hardcoded Groth16 VK (Groth16Verifier, SP1 groth16 v6.1.0) ----------
+    // G2 constants are already negated (BETA/GAMMA/DELTA). _0 = real, _1 = imag.
+
+    /// Build the verification-key bundle once: alpha (G1), the negated G2 VK
+    /// points (beta/gamma/delta), the constant G1 point and the 5 public-input
+    /// G1 points. Off-curve here would be a programming error in the constants,
+    /// so `g1_on_curve`/`g2_on_curve` are expected to succeed.
+    struct Vk {
+        alpha: G1Affine,
+        beta_neg: G2Affine,
+        gamma_neg: G2Affine,
+        delta_neg: G2Affine,
+        constant: G1Affine,
+        pub_points: [G1Affine; 5],
+    }
+
+    fn g1(x: &str, y: &str) -> G1Affine {
+        g1_on_curve(&(bi(x), bi(y)), "groth16 vk G1")
+            .expect("VK G1 constant on curve")
+            .into_affine()
+    }
+
+    fn g2(x0: &str, x1: &str, y0: &str, y1: &str) -> G2Affine {
+        // (real, imag) == (c0, c1); g2_on_curve takes (xReal, xImag, yReal, yImag).
+        g2_on_curve(&(bi(x0), bi(x1), bi(y0), bi(y1)), "groth16 vk G2")
+            .expect("VK G2 constant on curve")
+    }
+
+    fn vk() -> &'static Vk {
+        static VK: OnceLock<Vk> = OnceLock::new();
+        VK.get_or_init(|| Vk {
+            // Groth16 alpha point in G1.
+            alpha: g1(
+                "15279411540481963483749982645131486879260751823620651493692884460296130891713",
+                "15872895802316430142046488442363778159164596024024981740547841316113839677454",
+            ),
+            // beta in G2 (negated), _0 = real, _1 = imag.
+            beta_neg: g2(
+                "6145571844528009385227270901181311049451968424667282936975270874464890915386",
+                "12771786691609444002416405093387705070206640282801320788762089789398249455552",
+                "4488883874756188982949192438322346627006627895205628031405236004639323835517",
+                "1735169520034591855846686229876971881413094324547255227368057137445726296809",
+            ),
+            // gamma in G2 (negated).
+            gamma_neg: g2(
+                "10857046999023057135944570762232829481370756359578518086990519993285655852781",
+                "11559732032986387107991004021392285783925812861821192530917403151452391805634",
+                "13392588948715843804641432497768002650278120570034223513918757245338268106653",
+                "17805874995975841540914202342111839520379459829704422454583296818431106115052",
+            ),
+            // delta in G2 (negated).
+            delta_neg: g2(
+                "10465707362494635227101096813108413078937487707553051407465224907243675430929",
+                "8014260607368773541998918215611927658290278403999176336697043972644519659243",
+                "19389283139277148919245778864125350153699493315071306268776225113374776030523",
+                "16335894885742905444968709132584769120387318573561090701871591658625758958113",
+            ),
+            // Constant + public-input points (G1).
+            constant: g1(
+                "20281192269339458123687070687118212311775320590888414619062163734024177320592",
+                "4733327396113282720944079206751955104965328647794767422434462962576999295035",
+            ),
+            pub_points: [
+                g1(
+                    "6933777020392885277709527453058337947310422411038083362275568070104688005311",
+                    "981134475045095331624771061624185350383934842154508663637397442918499383708",
+                ),
+                g1(
+                    "4994703368938944727583784298191985234033403433117347198670233075674015451426",
+                    "8251219283963080431419977720140972699009004688253176317231536639169726973868",
+                ),
+                g1(
+                    "4290838847096051522936899065591427041691227664160185228987863596451823131267",
+                    "20588566735491008722164159313316540988426258906449040460220495569364391658476",
+                ),
+                g1(
+                    "10868099250506113890234768256645470833285719586092080686774540776807380789751",
+                    "481415511937576118656966359026147167555048629225366340770167496559184060449",
+                ),
+                g1(
+                    "248210862999154995000539012177951057105481472135341820587821789934938975214",
+                    "4435539404843896136682123140600986858809597152596796648926707165831171499457",
+                ),
+            ],
+        })
+    }
+
+    /// Number of public inputs this verifier expects (Groth16Verifier).
+    const NUM_PUBLIC_INPUTS: usize = 5;
+
+    /// Public-input MSM `L = CONSTANT + sum_i input_i * PUB_i`. Each scalar must
+    /// already be reduced (`< R`); unreduced scalars are rejected (mirrors the
+    /// Solidity `lt(s, R)` checks).
+    fn public_input_msm(input: &[BigUint]) -> Result<G1Affine, String> {
+        if input.len() != NUM_PUBLIC_INPUTS {
+            return Err(format!(
+                "expected {NUM_PUBLIC_INPUTS} public inputs, got {}",
+                input.len()
+            ));
+        }
+        let r = hb::modulus();
+        if input.iter().any(|s| s >= r) {
+            return Err("public input not in scalar field".to_string());
+        }
+        let v = vk();
+        // acc starts at CONSTANT, then adds input_i * PUB_i.
+        let mut acc = v.constant.into_group();
+        for (i, s) in input.iter().enumerate() {
+            // G1.multiply reduces the scalar mod R (here already < R).
+            let term = v.pub_points[i].into_group().mul_biguint(s); // -> G1Affine
+            acc += term.into_group(); // G1Projective += G1Projective
+        }
+        Ok(acc.into_affine())
+    }
+
+    /// Verify an uncompressed Groth16 proof against five public inputs. `proof`
+    /// is `(A.x, A.y, B.x_imag, B.x_real, B.y_imag, B.y_real, C.x, C.y)` in
+    /// EIP-197 order (the layout produced by gnark / abi-encoded SP1 proofs).
+    ///
+    /// NOTE on validation: the Scala `Groth16Verifier.verifyProof` builds the
+    /// proof points A/B/C via plain `G1(..)` / `G2(..)` and pairs them WITHOUT
+    /// any on-curve / base-field check (Besu's `Fq.create` / `Fq2.create` only
+    /// reduce the coordinate mod P). We mirror that exactly: build the proof
+    /// points unchecked and reduce each coordinate mod P implicitly (ark's
+    /// `Fq::from`). A bad / tampered proof then simply makes the four-pairing
+    /// product != 1, yielding `false` (not an error), as in Scala.
+    fn verify_proof(proof: &[BigUint], input: &[BigUint]) -> Result<(), String> {
+        use ark_bn254::{Fq, Fq2};
+        if proof.len() != 8 {
+            return Err(format!("expected 8 proof elements, got {}", proof.len()));
+        }
+        let l = public_input_msm(input)?;
+        let v = vk();
+
+        // A = (proof0, proof1) in G1 (unchecked; coords reduced mod P).
+        let a = G1Affine::new_unchecked(
+            Fq::from(proof[0].clone()),
+            Fq::from(proof[1].clone()),
+        );
+        // B in G2; EIP-197 order in `proof`: imag before real.
+        //   xReal = proof3, xImag = proof2, yReal = proof5, yImag = proof4.
+        let b = G2Affine::new_unchecked(
+            Fq2::new(Fq::from(proof[3].clone()), Fq::from(proof[2].clone())),
+            Fq2::new(Fq::from(proof[5].clone()), Fq::from(proof[4].clone())),
+        );
+        // C = (proof6, proof7) in G1 (unchecked).
+        let c = G1Affine::new_unchecked(
+            Fq::from(proof[6].clone()),
+            Fq::from(proof[7].clone()),
+        );
+
+        // e(A, B) * e(C, -delta) * e(alpha, -beta) * e(L, -gamma) == 1
+        let ok = pairing_product_is_one(&[
+            (a, b),
+            (c, v.delta_neg),
+            (v.alpha, v.beta_neg),
+            (l, v.gamma_neg),
+        ]);
+        if ok {
+            Ok(())
+        } else {
+            Err("pairing check failed".to_string())
+        }
+    }
+
+    /// Decode `count` consecutive big-endian uint256 words starting at `offset`.
+    fn decode_words(bytes: &[u8], offset: usize, count: usize) -> Vec<BigUint> {
+        (0..count)
+            .map(|i| {
+                let start = offset + i * 32;
+                BigUint::from_bytes_be(&bytes[start..start + 32])
+            })
+            .collect()
+    }
+
+    fn selector_matches(proof_bytes: &[u8]) -> bool {
+        proof_bytes.len() >= 4 && proof_bytes[0..4] == VERIFIER_SELECTOR
+    }
+
+    /// Full SP1 verify: `Right(())` on success, `Left(reason)` on any failure.
+    /// `program_vkey` is the (already width-checked, 32-byte) program VK.
+    pub(super) fn verify(
+        program_vkey: &[u8],
+        public_values: &[u8],
+        proof_bytes: &[u8],
+    ) -> Result<(), String> {
+        // programVKey length is enforced at the opcode boundary (HexBytes wants
+        // 32B), but the Scala verifier re-checks it too; mirror that exactly.
+        if program_vkey.len() != 32 {
+            return Err(format!(
+                "programVKey must be 32 bytes, got {}",
+                program_vkey.len()
+            ));
+        }
+        if proof_bytes.len() != EXPECTED_PROOF_LENGTH {
+            return Err(format!(
+                "proofBytes must be {EXPECTED_PROOF_LENGTH} bytes, got {}",
+                proof_bytes.len()
+            ));
+        }
+        if !selector_matches(proof_bytes) {
+            return Err("wrong verifier selector".to_string());
+        }
+        // abi.decode(proofBytes[4:], (uint256, uint256, uint256, uint256[8]))
+        let words = decode_words(proof_bytes, 4, 11);
+        let exit_code = &words[0];
+        let vk_root_word = &words[1];
+        let nonce = &words[2];
+        let proof = &words[3..11]; // uint256[8], inline
+
+        if !exit_code.is_zero() {
+            return Err("invalid exit code".to_string());
+        }
+        if vk_root_word != vk_root() {
+            return Err("invalid vk root".to_string());
+        }
+        let program_vkey_int = BigUint::from_bytes_be(program_vkey);
+        let public_values_digest = hash_public_values(public_values);
+        let inputs = vec![
+            program_vkey_int,
+            public_values_digest,
+            exit_code.clone(),
+            vk_root_word.clone(),
+            nonce.clone(),
+        ];
+        verify_proof(proof, &inputs)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// groth16_verify: [vkeyHex(32B), publicValuesHex, proofHex] -> bool.
+// ---------------------------------------------------------------------------
+
+/// `groth16_verify([vkeyHex(32B), publicValuesHex, proofHex]) -> bool`.
+///
+/// Byte-for-byte port of the Scala `CryptoOps.groth16Verify`:
+///   * `vkey` MUST be exactly 32 bytes (wrong width -> `Err`);
+///   * `publicValues` / `proof` are arbitrary-width byte strings;
+///   * `Sp1Groth16Verifier.verify(...).isRight` -> `true`, any `Left(_)` ->
+///     `false` (a malformed-but-well-typed proof is simply invalid, NOT an
+///     error).
+pub fn groth16_verify(values: &[Value]) -> Result<Value, String> {
+    match values {
+        [vkey_v, pub_v, proof_v] => {
+            let vkey_hex = expect_str("groth16_verify vkey", vkey_v)?;
+            let pub_hex = expect_str("groth16_verify publicValues", pub_v)?;
+            let proof_hex = expect_str("groth16_verify proof", proof_v)?;
+            let vkey = hb::parse_bytes(vkey_hex, Some(32), "groth16_verify vkey")?;
+            let public_values = hb::parse_bytes(pub_hex, None, "groth16_verify publicValues")?;
+            let proof = hb::parse_bytes(proof_hex, None, "groth16_verify proof")?;
+            // Right(()) -> true, Left(_) -> false.
+            Ok(Value::Bool(
+                groth16::verify(&vkey, &public_values, &proof).is_ok(),
+            ))
+        }
+        _ => Err(format!(
+            "groth16_verify: expected [vkeyHex, publicValuesHex, proofHex], got {values:?}"
+        )),
+    }
+}
+
 /// Build an on-curve BN254 G2 affine point from the parsed
 /// `(xReal, xImag, yReal, yImag)` Fp2 limbs; reject off-curve points. Mirrors
 /// the Scala `g2OnCurve` over `Bn254.G2`. Each Fp2 coordinate is
@@ -477,5 +800,97 @@ mod tests {
         let (x, y) = affine_xy(&g);
         assert_eq!(x, BigUint::from(1u32));
         assert_eq!(y, BigUint::from(2u32));
+    }
+
+    // -- Tier-3a: ark-bn254 == alt_bn128 (same base/scalar field moduli) ------
+
+    #[test]
+    fn ark_bn254_equals_alt_bn128_moduli() {
+        use ark_ff::{BigInteger, PrimeField};
+        // Scala Bn254.P (Fp modulus) and Bn254.R (Fr modulus / group order).
+        let p_scala = BigUint::parse_bytes(
+            b"21888242871839275222246405745257275088696311157297823662689037894645226208583",
+            10,
+        )
+        .unwrap();
+        let r_scala = BigUint::parse_bytes(
+            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+            10,
+        )
+        .unwrap();
+        let p_ark = BigUint::from_bytes_be(&Fq::MODULUS.to_bytes_be());
+        let r_ark = BigUint::from_bytes_be(&ArkFr::MODULUS.to_bytes_be());
+        assert_eq!(p_ark, p_scala, "ark-bn254 Fq modulus must equal alt_bn128 P");
+        assert_eq!(r_ark, r_scala, "ark-bn254 Fr modulus must equal alt_bn128 R");
+        // Generator (1, 2) confirms the same short-Weierstrass curve y^2=x^3+3.
+        assert!(G1Affine::new_unchecked(Fq::from(1u64), Fq::from(2u64)).is_on_curve());
+    }
+
+    // -- Tier-3a: the real SP1 Groth16 fixture verifies ----------------------
+
+    fn b(hex: &str) -> Vec<u8> {
+        hb::parse_bytes(hex, None, "test").unwrap()
+    }
+
+    const FIX_VKEY: &str = "0x00f31d3c82e1ac5e413efe237066f7b6820416878cd71f6c9d4f642b24732a93";
+    const FIX_PUB: &str = "0x58d7c56e77ed39c091110d92d46a66cea049a474d753f6b956aa705da6d37910f93307032beacc2e0689ce1995ac2d0e5c10bd07368f02a3c66a48d6a92379de32b53f73997cb99264404f7864305478604d1fe6a294d02ba66fbca99486521a0000000000000000000000000000000000000000000000000000000000000001";
+    const FIX_PROOF: &str = "0x4388a21c0000000000000000000000000000000000000000000000000000000000000000002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f253520000000000000000000000000000000000000000000000000000000000000000290c3934305db216c7a88e30e3aaf6c6d0987552c2538c944cf3b9594780b1c01a42da01353837bd8b620918fc2589197feb2195512b68d814df02f27b33bc752f47a335f7336670e17c24c6b60620f5cc36732006467eebfe47fce06299a1672867b465bb0370cee01c0e48f00cbbe5fc1aeb01b45d4b91901d6b12a8d447372405d77dd7bebda65275600b86cc732015db2740ff20f0e782ba27bd575f082520a19daad962d6791b5d72cd476c5ede8f04e042bedff291d8adc35f3d6cd5f60cfe1755fdb55da90ed1b58b271c39f0956c0eb876cfc0fdad0d62a37ae616741b90155ee4f9846f42ca5dfb9e235ddc24575d36545d108b1b87328a368ee768";
+
+    #[test]
+    fn real_sp1_groth16_proof_verifies() {
+        let res = groth16::verify(&b(FIX_VKEY), &b(FIX_PUB), &b(FIX_PROOF));
+        assert_eq!(res, Ok(()), "the real SP1 Groth16 proof MUST verify");
+    }
+
+    #[test]
+    fn tampered_last_proof_byte_fails() {
+        let mut proof = b(FIX_PROOF);
+        let n = proof.len() - 1;
+        proof[n] ^= 0x01;
+        assert!(groth16::verify(&b(FIX_VKEY), &b(FIX_PUB), &proof).is_err());
+    }
+
+    #[test]
+    fn wrong_selector_fails() {
+        let mut proof = b(FIX_PROOF);
+        proof[0] ^= 0x01;
+        assert_eq!(
+            groth16::verify(&b(FIX_VKEY), &b(FIX_PUB), &proof),
+            Err("wrong verifier selector".to_string())
+        );
+    }
+
+    #[test]
+    fn wrong_public_values_fails() {
+        let mut pub_v = b(FIX_PUB);
+        pub_v[0] ^= 0x01;
+        assert!(groth16::verify(&b(FIX_VKEY), &pub_v, &b(FIX_PROOF)).is_err());
+    }
+
+    #[test]
+    fn wrong_program_vkey_fails() {
+        let mut vkey = b(FIX_VKEY);
+        vkey[0] ^= 0x01;
+        assert!(groth16::verify(&vkey, &b(FIX_PUB), &b(FIX_PROOF)).is_err());
+    }
+
+    #[test]
+    fn groth16_opcode_isright_to_bool() {
+        // Opcode boundary: real proof -> true.
+        let ok = groth16_verify(&[
+            Value::Str(FIX_VKEY.into()),
+            Value::Str(FIX_PUB.into()),
+            Value::Str(FIX_PROOF.into()),
+        ])
+        .unwrap();
+        assert!(matches!(ok, Value::Bool(true)));
+        // Wrong-width vkey -> Err (a JsonLogicException), NOT false.
+        let bad_vkey = format!("0x{}", "00".repeat(31)); // 31 bytes
+        let err = groth16_verify(&[
+            Value::Str(bad_vkey),
+            Value::Str(FIX_PUB.into()),
+            Value::Str(FIX_PROOF.into()),
+        ]);
+        assert!(err.is_err(), "wrong-width vkey must be an opcode error");
     }
 }
